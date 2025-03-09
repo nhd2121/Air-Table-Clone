@@ -8,6 +8,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { api } from "@/trpc/react";
+import { faker } from "@faker-js/faker";
 
 // Define the data structure for each row
 interface TableRow {
@@ -38,6 +39,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [newColumnType, setNewColumnType] = useState<ColumnType>("TEXT");
+  // Track if faker data has been generated
+  const [fakerDataGenerated, setFakerDataGenerated] = useState(false);
 
   // Local state to track current edits before sending to database
   const [editingCells, setEditingCells] = useState<Record<string, string>>({});
@@ -58,29 +61,170 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     { tableId },
     {
       onSuccess: (data) => {
-        setData(data.rows || []);
-
         // Initialize column types
         const types: ColumnTypesState = {};
         data.columns.forEach((col) => {
           types[col.id] = col.type as ColumnType;
         });
         setColumnTypes(types);
+
+        // Check if we need to ensure we have at least 10 rows
+        if (data.rows.length < 10) {
+          // Instead of waiting for API calls to complete, create 10 rows immediately in the UI
+          // We'll still create them in the database, but we don't need to wait
+          const existingRows = [...data.rows];
+          const fakerRows: TableRow[] = [];
+
+          // Create a complete set of 10 rows
+          for (let i = 0; i < 10; i++) {
+            if (i < existingRows.length) {
+              // Use existing row
+              fakerRows.push(existingRows[i]);
+            } else {
+              // Create a temporary row with a fake ID until real one is created
+              const tempId = `temp-${i}`;
+              const newRow: TableRow = { id: tempId };
+
+              // Add the row to our UI data
+              fakerRows.push(newRow);
+
+              // Create the row in the database (but don't wait for it)
+              addRow.mutate(
+                { tableId },
+                {
+                  onSuccess: (addedRow) => {
+                    // When the row is created, update our internal data structure
+                    setData((prevData) =>
+                      prevData.map((row) =>
+                        row.id === tempId ? { ...row, id: addedRow.id } : row,
+                      ),
+                    );
+                  },
+                },
+              );
+            }
+          }
+
+          // Generate fake data for all 10 rows
+          const fakerData = generateFakerData(fakerRows, data.columns);
+          setData(fakerData);
+
+          // Update the cells in the database for existing rows (don't wait for new rows)
+          fakerData.forEach((row) => {
+            // Only update existing rows (not temporary ones)
+            if (!row.id.startsWith("temp-")) {
+              data.columns.forEach((col) => {
+                if (row[col.id]) {
+                  updateCell.mutate({
+                    rowId: row.id,
+                    columnId: col.id,
+                    value: row[col.id],
+                  });
+                }
+              });
+            }
+          });
+        } else {
+          // We have enough rows, just generate fake data for them
+          const fakerData = generateFakerData(data.rows, data.columns);
+          setData(fakerData);
+
+          // Update the cells in the database
+          fakerData.forEach((row) => {
+            data.columns.forEach((col) => {
+              if (row[col.id]) {
+                updateCell.mutate({
+                  rowId: row.id,
+                  columnId: col.id,
+                  value: row[col.id],
+                });
+              }
+            });
+          });
+        }
       },
       // These options ensure we always get fresh data
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false, // Don't refetch on window focus as it can disrupt editing
       refetchOnMount: true,
       refetchOnReconnect: true,
       staleTime: 0, // Consider data stale immediately
     },
   );
 
-  // Re-fetch when component mounts
+  // Function to generate faker data based on column types
+  const generateFakerData = (rows: TableRow[], columns: any[]): TableRow[] => {
+    return rows.map((row) => {
+      const newRow: TableRow = { ...row };
+
+      columns.forEach((column) => {
+        const columnType = column.type as ColumnType;
+
+        switch (columnType) {
+          case "TEXT":
+            if (column.name.toLowerCase().includes("name")) {
+              newRow[column.id] = faker.person.fullName();
+            } else if (column.name.toLowerCase().includes("email")) {
+              newRow[column.id] = faker.internet.email();
+            } else if (column.name.toLowerCase().includes("address")) {
+              newRow[column.id] = faker.location.streetAddress();
+            } else if (column.name.toLowerCase().includes("company")) {
+              newRow[column.id] = faker.company.name();
+            } else if (column.name.toLowerCase().includes("phone")) {
+              newRow[column.id] = faker.phone.number();
+            } else if (
+              column.name.toLowerCase().includes("notes") ||
+              column.name.toLowerCase().includes("description")
+            ) {
+              newRow[column.id] = faker.lorem.sentence();
+            } else if (column.name.toLowerCase().includes("status")) {
+              newRow[column.id] = faker.helpers.arrayElement([
+                "Pending",
+                "In Progress",
+                "Completed",
+                "Cancelled",
+              ]);
+            } else if (column.name.toLowerCase().includes("assignee")) {
+              newRow[column.id] = faker.person.firstName();
+            } else {
+              newRow[column.id] = faker.lorem.words(2);
+            }
+            break;
+          case "NUMBER":
+            newRow[column.id] = faker.number
+              .int({ min: 1, max: 1000 })
+              .toString();
+            break;
+          case "DATE":
+            newRow[column.id] = faker.date.recent().toISOString().split("T")[0];
+            break;
+          case "BOOLEAN":
+            newRow[column.id] = faker.datatype.boolean().toString();
+            break;
+          case "SELECT":
+            newRow[column.id] = faker.helpers.arrayElement([
+              "Option 1",
+              "Option 2",
+              "Option 3",
+            ]);
+            break;
+          default:
+            newRow[column.id] = faker.lorem.word();
+        }
+      });
+
+      return newRow;
+    });
+  };
+
+  // Re-fetch when component mounts or tableId changes
   useEffect(() => {
     refetch();
-  }, [refetch]);
+    // Always reset faker data generation flag when tableId changes
+    // This ensures new fake data is generated for each table
+    setFakerDataGenerated(false);
+  }, [refetch, tableId]);
 
-  // Handle cell value change with type safety
+  // Function to handle cell changes when a cell is being edited
   const handleCellChange = (
     rowId: string,
     columnId: string,
@@ -104,6 +248,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const handleCellBlur = (rowId: string, columnId: string): void => {
     const cellKey = `${rowId}-${columnId}`;
     const value = editingCells[cellKey] || "";
+
+    // Skip updates for temporary rows that haven't been created in the database yet
+    if (rowId.startsWith("temp-")) {
+      return;
+    }
 
     // Update the database
     updateCell.mutate({
@@ -145,15 +294,27 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         });
       }
 
+      // Generate faker data for the new row
+      const newRowWithFakerData = generateFakerData(
+        [newRowObj],
+        tableData?.columns || [],
+      )[0];
+
       // Update local state
-      setData((prev) => [...prev, newRowObj]);
+      setData((prev) => [...prev, newRowWithFakerData]);
 
-      // Invalidate all relevant queries
-      utils.table.getTableData.invalidate({ tableId });
-      utils.table.getTablesForBase.invalidate();
-
-      // Force a refetch to ensure data consistency
-      refetch();
+      // Update the cells in the database with faker data
+      if (tableData) {
+        tableData.columns.forEach((col) => {
+          if (newRowWithFakerData[col.id]) {
+            updateCell.mutate({
+              rowId: newRow.id,
+              columnId: col.id,
+              value: newRowWithFakerData[col.id],
+            });
+          }
+        });
+      }
     },
   });
 
@@ -181,6 +342,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       utils.table.getTableData.invalidate({ tableId });
     },
   });
+
+  // This function has been removed as we no longer need manual regeneration
 
   // Handle adding a new row
   const handleAddRow = (): void => {
@@ -261,6 +424,24 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             >
               Number
             </div>
+            <div
+              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "DATE" ? "bg-blue-50 text-blue-700" : ""}`}
+              onClick={() => changeColumnType(columnId, "DATE")}
+            >
+              Date
+            </div>
+            <div
+              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "BOOLEAN" ? "bg-blue-50 text-blue-700" : ""}`}
+              onClick={() => changeColumnType(columnId, "BOOLEAN")}
+            >
+              Boolean
+            </div>
+            <div
+              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "SELECT" ? "bg-blue-50 text-blue-700" : ""}`}
+              onClick={() => changeColumnType(columnId, "SELECT")}
+            >
+              Select
+            </div>
           </div>
         )}
       </div>
@@ -269,6 +450,12 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   // Create column helper with type safety
   const columnHelper = createColumnHelper<TableRow>();
+
+  // State to track which cell is being edited
+  const [editingCell, setEditingCell] = useState<{
+    rowId: string;
+    columnId: string;
+  } | null>(null);
 
   // Define columns with proper typing
   const buildColumns = () => {
@@ -302,6 +489,9 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             const rowId = row.original.id;
             const columnId = column.id;
             const cellKey = `${rowId}-${columnId}`;
+            const isEditing =
+              editingCell?.rowId === rowId &&
+              editingCell?.columnId === columnId;
 
             // Use the editing value if it exists, otherwise use the data value
             const value =
@@ -309,16 +499,33 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                 ? editingCells[cellKey]
                 : row.original[columnId] || "";
 
+            // If the cell is being edited, show an input field
+            if (isEditing) {
+              return (
+                <input
+                  type={columnTypes[columnId] === "NUMBER" ? "number" : "text"}
+                  value={value}
+                  onChange={(e) =>
+                    handleCellChange(rowId, columnId, e.target.value)
+                  }
+                  onBlur={() => {
+                    handleCellBlur(rowId, columnId);
+                    setEditingCell(null);
+                  }}
+                  autoFocus
+                  className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              );
+            }
+
+            // Otherwise, show a display-only div that can be clicked to edit
             return (
-              <input
-                type={columnTypes[columnId] === "NUMBER" ? "number" : "text"}
-                value={value}
-                onChange={(e) =>
-                  handleCellChange(rowId, columnId, e.target.value)
-                }
-                onBlur={() => handleCellBlur(rowId, columnId)}
-                className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div
+                className="w-full cursor-pointer p-2 hover:bg-gray-50"
+                onClick={() => setEditingCell({ rowId, columnId })}
+              >
+                {value}
+              </div>
             );
           },
         }),
