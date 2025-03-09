@@ -17,14 +17,20 @@ export function BaseNavbar({ baseName, baseId, tables = [] }: BaseNavbarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: session } = useSession();
 
+  const utils = api.useUtils();
+
   const updateBase = api.base.update.useMutation({
     onSuccess: () => {
       // Invalidate the query cache to refresh the data
       utils.base.getById.invalidate({ id: baseId });
+      utils.base.getAll.invalidate();
     },
   });
 
-  const utils = api.useUtils();
+  useEffect(() => {
+    // Update the name state when props change
+    setName(baseName);
+  }, [baseName]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -90,7 +96,7 @@ export function BaseNavbar({ baseName, baseId, tables = [] }: BaseNavbarProps) {
                   onChange={handleNameChange}
                   onBlur={handleNameBlur}
                   onKeyDown={handleKeyDown}
-                  className="bg-transparent text-white focus:outline-none focus:ring-1 focus:ring-white/50"
+                  className="bg-green-700 px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-white/50"
                 />
               ) : (
                 <span

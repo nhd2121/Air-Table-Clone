@@ -16,7 +16,7 @@ interface TableRow {
 }
 
 // Define column type options
-type ColumnType = "TEXT" | "NUMBER";
+type ColumnType = "TEXT" | "NUMBER" | "DATE" | "BOOLEAN" | "SELECT";
 
 // Define the column types state structure
 interface ColumnTypesState {
@@ -34,14 +34,26 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [columnTypes, setColumnTypes] = useState<ColumnTypesState>({});
   // State for active dropdown
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  // State for add column modal
+  const [showAddColumnModal, setShowAddColumnModal] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [newColumnType, setNewColumnType] = useState<ColumnType>("TEXT");
+
+  // Local state to track current edits before sending to database
+  const [editingCells, setEditingCells] = useState<Record<string, string>>({});
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
-  // Fetch table data
+  // Access the utility functions for invalidating queries
+  const utils = api.useUtils();
+
+  // Fetch table data with refetch enabled
   const {
     data: tableData,
     isLoading,
     error,
+    refetch,
   } = api.table.getTableData.useQuery(
     { tableId },
     {
@@ -51,22 +63,56 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         // Initialize column types
         const types: ColumnTypesState = {};
         data.columns.forEach((col) => {
-          types[col.id] = col.type === "NUMBER" ? "NUMBER" : "TEXT";
+          types[col.id] = col.type as ColumnType;
         });
         setColumnTypes(types);
       },
+      // These options ensure we always get fresh data
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      staleTime: 0, // Consider data stale immediately
     },
   );
 
+  // Re-fetch when component mounts
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   // Handle cell value change with type safety
-  const updateData = (rowId: string, columnId: string, value: string): void => {
+  const handleCellChange = (
+    rowId: string,
+    columnId: string,
+    value: string,
+  ): void => {
+    const cellKey = `${rowId}-${columnId}`;
     const columnType = columnTypes[columnId];
 
     if (columnType === "NUMBER" && isNaN(Number(value)) && value !== "") {
       return;
     }
 
-    // Update local state
+    // Update local editing state - this doesn't trigger table re-render
+    setEditingCells((prev) => ({
+      ...prev,
+      [cellKey]: value,
+    }));
+  };
+
+  // When cell edit is complete, update both local state and database
+  const handleCellBlur = (rowId: string, columnId: string): void => {
+    const cellKey = `${rowId}-${columnId}`;
+    const value = editingCells[cellKey] || "";
+
+    // Update the database
+    updateCell.mutate({
+      rowId,
+      columnId,
+      value,
+    });
+
+    // Update the local data state to match
     setData((old) =>
       old.map((row) => {
         if (row.id === rowId) {
@@ -79,11 +125,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       }),
     );
 
-    // Update in the database
-    updateCell.mutate({
-      rowId,
-      columnId,
-      value,
+    // Clear this cell from editing state
+    setEditingCells((prev) => {
+      const newState = { ...prev };
+      delete newState[cellKey];
+      return newState;
     });
   };
 
@@ -99,18 +145,63 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         });
       }
 
-      setData([...data, newRowObj]);
+      // Update local state
+      setData((prev) => [...prev, newRowObj]);
+
+      // Invalidate all relevant queries
+      utils.table.getTableData.invalidate({ tableId });
+      utils.table.getTablesForBase.invalidate();
+
+      // Force a refetch to ensure data consistency
+      refetch();
+    },
+  });
+
+  // Add column mutation
+  const addColumn = api.table.addColumn.useMutation({
+    onSuccess: () => {
+      // Reset form values
+      setNewColumnName("");
+      setNewColumnType("TEXT");
+      setShowAddColumnModal(false);
+
+      // Invalidate all relevant queries
+      utils.table.getTableData.invalidate({ tableId });
+      utils.table.getTablesForBase.invalidate();
+
+      // Force a refetch to ensure data consistency
+      refetch();
     },
   });
 
   // Update cell mutation
-  const updateCell = api.table.updateCell.useMutation();
+  const updateCell = api.table.updateCell.useMutation({
+    onSuccess: () => {
+      // Invalidate table data
+      utils.table.getTableData.invalidate({ tableId });
+    },
+  });
 
   // Handle adding a new row
   const handleAddRow = (): void => {
     if (tableId) {
       addRow.mutate({ tableId });
     }
+  };
+
+  // Handle adding a new column
+  const handleAddColumn = (e: React.FormEvent): void => {
+    e.preventDefault();
+
+    if (!newColumnName.trim()) {
+      return;
+    }
+
+    addColumn.mutate({
+      tableId,
+      name: newColumnName.trim(),
+      type: newColumnType,
+    });
   };
 
   // Handle column type change
@@ -207,16 +298,29 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           header: () => (
             <ColumnTypeDropdown columnId={column.id} label={column.name} />
           ),
-          cell: ({ row, column: col, getValue }) => (
-            <input
-              type={columnTypes[column.id] === "NUMBER" ? "number" : "text"}
-              value={(getValue() as string) || ""}
-              onChange={(e) =>
-                updateData(row.original.id, column.id, e.target.value)
-              }
-              className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          ),
+          cell: ({ row, column: col }) => {
+            const rowId = row.original.id;
+            const columnId = column.id;
+            const cellKey = `${rowId}-${columnId}`;
+
+            // Use the editing value if it exists, otherwise use the data value
+            const value =
+              cellKey in editingCells
+                ? editingCells[cellKey]
+                : row.original[columnId] || "";
+
+            return (
+              <input
+                type={columnTypes[columnId] === "NUMBER" ? "number" : "text"}
+                value={value}
+                onChange={(e) =>
+                  handleCellChange(rowId, columnId, e.target.value)
+                }
+                onBlur={() => handleCellBlur(rowId, columnId)}
+                className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            );
+          },
         }),
       );
     });
@@ -226,7 +330,10 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       columnHelper.display({
         id: "addColumn",
         header: () => (
-          <button className="text-gray-500 hover:text-gray-700">
+          <button
+            className="text-gray-500 hover:text-gray-700"
+            onClick={() => setShowAddColumnModal(true)}
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-5 w-5"
@@ -267,13 +374,21 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       ) {
         setActiveDropdown(null);
       }
+
+      if (
+        showAddColumnModal &&
+        modalRef.current &&
+        !modalRef.current.contains(event.target as Node)
+      ) {
+        setShowAddColumnModal(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownRef]);
+  }, [dropdownRef, modalRef, showAddColumnModal]);
 
   if (isLoading) {
     return (
@@ -360,9 +475,78 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               />
             </svg>
           </button>
+          <button
+            className="ml-2 text-sm text-blue-500 hover:text-blue-700"
+            onClick={() => refetch()}
+          >
+            Refresh
+          </button>
         </div>
         <div className="text-sm text-gray-500">{data.length} records</div>
       </div>
+
+      {/* Add Column Modal */}
+      {showAddColumnModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div
+            ref={modalRef}
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
+          >
+            <h3 className="mb-4 text-xl font-medium">Add New Column</h3>
+            <form onSubmit={handleAddColumn}>
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium">
+                  Column Name
+                </label>
+                <input
+                  type="text"
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Enter column name"
+                  required
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium">
+                  Column Type
+                </label>
+                <select
+                  value={newColumnType}
+                  onChange={(e) =>
+                    setNewColumnType(e.target.value as ColumnType)
+                  }
+                  className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="TEXT">Text</option>
+                  <option value="NUMBER">Number</option>
+                  <option value="DATE">Date</option>
+                  <option value="BOOLEAN">Boolean</option>
+                  <option value="SELECT">Select</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAddColumnModal(false)}
+                  className="mr-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+                  disabled={addColumn.isPending}
+                >
+                  {addColumn.isPending ? "Adding..." : "Add Column"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

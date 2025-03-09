@@ -305,16 +305,25 @@ export const tableRouter = createTRPCRouter({
       });
 
       // Create empty cells for each column with this row
-      for (const column of table.columns) {
-        await ctx.db.cell.create({
+      const cellCreationPromises = table.columns.map((column) =>
+        ctx.db.cell.create({
           data: {
             columnId: column.id,
             rowId: row.id,
             value: "",
           },
-        });
-      }
+        }),
+      );
 
-      return row;
+      // Wait for all cells to be created
+      await Promise.all(cellCreationPromises);
+
+      // Return the row with cells included for better client-side caching
+      return ctx.db.row.findUnique({
+        where: { id: row.id },
+        include: {
+          cells: true,
+        },
+      });
     }),
 });
