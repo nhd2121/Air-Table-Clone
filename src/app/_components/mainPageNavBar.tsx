@@ -10,6 +10,7 @@ interface BaseNavbarProps {
   baseId: string;
   tables: any[];
   onTableSelect?: (tableId: string) => void;
+  onTableCreated?: (newTable: any) => void;
   activeTableId?: string;
 }
 
@@ -18,15 +19,14 @@ export function BaseNavbar({
   baseId,
   tables = [],
   onTableSelect,
+  onTableCreated,
   activeTableId,
 }: BaseNavbarProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(baseName);
-  const [showAddTableModal, setShowAddTableModal] = useState(false);
-  const [newTableName, setNewTableName] = useState("");
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
 
   const utils = api.useUtils();
@@ -41,18 +41,21 @@ export function BaseNavbar({
 
   const createTable = api.table.create.useMutation({
     onSuccess: (newTable) => {
-      // Reset the form
-      setNewTableName("");
-      setShowAddTableModal(false);
+      // Set creating state to false
+      setIsCreatingTable(false);
+
+      // Call the callback to update parent component's state
+      if (onTableCreated) {
+        onTableCreated(newTable);
+      }
 
       // Invalidate the query cache to refresh the data
       utils.table.getTablesForBase.invalidate({ baseId });
       utils.base.getById.invalidate({ id: baseId });
-
-      // Select the newly created table
-      if (onTableSelect) {
-        onTableSelect(newTable.id);
-      }
+    },
+    onError: (error) => {
+      console.error("Error creating table:", error);
+      setIsCreatingTable(false);
     },
   });
 
@@ -68,24 +71,6 @@ export function BaseNavbar({
       inputRef.current.select();
     }
   }, [isEditing]);
-
-  // Close modal when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        showAddTableModal &&
-        modalRef.current &&
-        !modalRef.current.contains(event.target as Node)
-      ) {
-        setShowAddTableModal(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showAddTableModal]);
 
   const handleNameClick = () => {
     setIsEditing(true);
@@ -125,16 +110,32 @@ export function BaseNavbar({
     setIsEditing(false);
   };
 
-  const handleAddTable = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddTable = () => {
+    if (isCreatingTable) return; // Prevent multiple clicks
 
-    if (!newTableName.trim()) {
-      return;
-    }
+    setIsCreatingTable(true);
+
+    // Generate the next table number
+    let nextTableNumber = 1;
+
+    // Find the highest number in existing table names
+    const tableNumberRegex = /Table (\d+)/;
+    tables.forEach((table) => {
+      const match = table.name.match(tableNumberRegex);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num >= nextTableNumber) {
+          nextTableNumber = num + 1;
+        }
+      }
+    });
+
+    // Create the new table with the next number
+    const newTableName = `Table ${nextTableNumber}`;
 
     createTable.mutate({
       baseId,
-      name: newTableName.trim(),
+      name: newTableName,
     });
   };
 
@@ -201,56 +202,14 @@ export function BaseNavbar({
 
         {/* Add Table Button */}
         <div
-          className="ml-3 flex cursor-pointer items-center rounded px-3 py-1.5 text-white hover:bg-green-600"
-          onClick={() => setShowAddTableModal(true)}
+          className={`ml-3 flex cursor-pointer items-center rounded px-3 py-1.5 text-white ${
+            isCreatingTable ? "opacity-50" : "hover:bg-green-600"
+          }`}
+          onClick={handleAddTable}
         >
-          + Add Table
+          {isCreatingTable ? "Creating..." : "+ Add Table"}
         </div>
       </div>
-
-      {/* Add Table Modal */}
-      {showAddTableModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div
-            ref={modalRef}
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
-          >
-            <h3 className="mb-4 text-xl font-medium">Add New Table</h3>
-            <form onSubmit={handleAddTable}>
-              <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium">
-                  Table Name
-                </label>
-                <input
-                  type="text"
-                  value={newTableName}
-                  onChange={(e) => setNewTableName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="Enter table name"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddTableModal(false)}
-                  className="mr-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-                  disabled={createTable.isPending}
-                >
-                  {createTable.isPending ? "Creating..." : "Create Table"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

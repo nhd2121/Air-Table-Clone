@@ -7,6 +7,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
 import { faker } from "@faker-js/faker";
 
@@ -39,8 +40,10 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [newColumnType, setNewColumnType] = useState<ColumnType>("TEXT");
-  // Track if faker data has been generated
-  const [fakerDataGenerated, setFakerDataGenerated] = useState(false);
+  // State to track if we're adding 100 rows
+  const [isAddingRows, setIsAddingRows] = useState(false);
+  // Reference to table container
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Local state to track current edits before sending to database
   const [editingCells, setEditingCells] = useState<Record<string, string>>({});
@@ -51,12 +54,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Access the utility functions for invalidating queries
   const utils = api.useUtils();
 
-  // Fetch table data with refetch enabled
+  // Fetch table data
   const {
     data: tableData,
     isLoading,
     error,
-    refetch,
   } = api.table.getTableData.useQuery(
     { tableId },
     {
@@ -71,7 +73,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         // Check if we need to ensure we have at least 10 rows
         if (data.rows.length < 10) {
           // Instead of waiting for API calls to complete, create 10 rows immediately in the UI
-          // We'll still create them in the database, but we don't need to wait
           const existingRows = [...data.rows];
           const fakerRows: TableRow[] = [];
 
@@ -126,7 +127,9 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           });
         } else {
           // We have enough rows, just generate fake data for them
-          const fakerData = generateFakerData(data.rows, data.columns);
+          // Only take the first 10 rows for initial display
+          const initialRows = data.rows.slice(0, 10);
+          const fakerData = generateFakerData(initialRows, data.columns);
           setData(fakerData);
 
           // Update the cells in the database
@@ -143,11 +146,10 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           });
         }
       },
-      // These options ensure we always get fresh data
-      refetchOnWindowFocus: false, // Don't refetch on window focus as it can disrupt editing
+      refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,
-      staleTime: 0, // Consider data stale immediately
+      staleTime: 0,
     },
   );
 
@@ -215,14 +217,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       return newRow;
     });
   };
-
-  // Re-fetch when component mounts or tableId changes
-  useEffect(() => {
-    refetch();
-    // Always reset faker data generation flag when tableId changes
-    // This ensures new fake data is generated for each table
-    setFakerDataGenerated(false);
-  }, [refetch, tableId]);
 
   // Function to handle cell changes when a cell is being edited
   const handleCellChange = (
@@ -329,9 +323,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       // Invalidate all relevant queries
       utils.table.getTableData.invalidate({ tableId });
       utils.table.getTablesForBase.invalidate();
-
-      // Force a refetch to ensure data consistency
-      refetch();
     },
   });
 
@@ -343,12 +334,65 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     },
   });
 
-  // This function has been removed as we no longer need manual regeneration
+  // Handle adding 100 rows
+  const handleAdd100Rows = async () => {
+    if (isAddingRows || !tableData) return;
 
-  // Handle adding a new row
-  const handleAddRow = (): void => {
-    if (tableId) {
-      addRow.mutate({ tableId });
+    setIsAddingRows(true);
+
+    try {
+      // Create an array to hold promises and new row objects
+      const newRows: TableRow[] = [];
+      const promises = [];
+
+      // Create 100 rows
+      for (let i = 0; i < 100; i++) {
+        const promise = addRow.mutateAsync({ tableId }).then((newRow) => {
+          // Create a new row object
+          const newRowObj: TableRow = { id: newRow.id };
+
+          // Add placeholder data for each column
+          if (tableData) {
+            tableData.columns.forEach((col) => {
+              newRowObj[col.id] = "";
+            });
+          }
+
+          // Generate fake data
+          const rowWithFakerData = generateFakerData(
+            [newRowObj],
+            tableData.columns,
+          )[0];
+
+          // Store the row with fake data
+          newRows.push(rowWithFakerData);
+
+          // Update cells in database
+          if (tableData) {
+            tableData.columns.forEach((col) => {
+              if (rowWithFakerData[col.id]) {
+                updateCell.mutate({
+                  rowId: newRow.id,
+                  columnId: col.id,
+                  value: rowWithFakerData[col.id],
+                });
+              }
+            });
+          }
+        });
+
+        promises.push(promise);
+      }
+
+      // Wait for all rows to be created
+      await Promise.all(promises);
+
+      // Update the data state with all new rows
+      setData((prevData) => [...prevData, ...newRows]);
+    } catch (error) {
+      console.error("Error adding 100 rows:", error);
+    } finally {
+      setIsAddingRows(false);
     }
   };
 
@@ -572,6 +616,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     getCoreRowModel: getCoreRowModel(),
   });
 
+  // Set up virtualizer for rows
+  const rowVirtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 53, // Estimated row height
+    overscan: 5,
+  });
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -613,13 +665,26 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     );
   }
 
+  // Get the virtualized rows
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalHeight - virtualRows[virtualRows.length - 1].end
+      : 0;
+
   return (
     <div className="flex h-full flex-col border border-gray-200">
-      <div className="overflow-x-auto">
+      <div
+        ref={tableContainerRef}
+        className="overflow-auto"
+        style={{ height: "calc(100vh - 180px)" }} // Adjust height to fit the screen better
+      >
         <table className="min-w-full table-fixed border-collapse">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b bg-gray-50">
+              <tr key={headerGroup.id} className="border-b">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
@@ -638,55 +703,57 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="border-b hover:bg-gray-50">
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className={`border-r px-4 py-3 text-sm ${
-                      cell.column.id === "select" ? "bg-gray-50" : ""
-                    }`}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+            {paddingTop > 0 && (
+              <tr>
+                <td
+                  style={{ height: `${paddingTop}px` }}
+                  colSpan={table.getAllColumns().length}
+                ></td>
               </tr>
-            ))}
+            )}
+            {virtualRows.map((virtualRow) => {
+              const row = table.getRowModel().rows[virtualRow.index];
+              if (!row) return null;
+
+              return (
+                <tr key={row.id} className="border-b hover:bg-gray-50">
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className={`border-r px-4 py-3 text-sm ${
+                        cell.column.id === "select" ? "bg-gray-50" : ""
+                      }`}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && (
+              <tr>
+                <td
+                  style={{ height: `${paddingBottom}px` }}
+                  colSpan={table.getAllColumns().length}
+                ></td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Add row button */}
-      <div className="flex-1"></div>
-
-      {/* Footer */}
+      {/* Footer with Add 100 Rows button */}
       <div className="flex items-center justify-between border-t bg-white px-4 py-2">
         <div className="flex items-center">
           <button
-            className="mr-2 rounded-full p-1 hover:bg-gray-100"
-            onClick={handleAddRow}
-            disabled={addRow.isPending}
+            className="rounded bg-blue-500 px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+            onClick={handleAdd100Rows}
+            disabled={isAddingRows}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </button>
-          <button
-            className="ml-2 text-sm text-blue-500 hover:text-blue-700"
-            onClick={() => refetch()}
-          >
-            Refresh
+            {isAddingRows ? "Adding..." : "Add 100 Rows"}
           </button>
         </div>
         <div className="text-sm text-gray-500">{data.length} records</div>
