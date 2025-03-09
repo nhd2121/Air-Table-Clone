@@ -76,6 +76,7 @@ export const baseRouter = createTRPCRouter({
       const randomColumns = generateRandomColumns();
 
       // Create a new base with a default table and random columns
+      // BUT NO INITIAL ROWS
       const base = await ctx.db.base.create({
         data: {
           name: input.name,
@@ -87,9 +88,7 @@ export const baseRouter = createTRPCRouter({
               columns: {
                 create: randomColumns,
               },
-              rows: {
-                create: Array(10).fill({}), // Create 10 empty rows
-              },
+              // No rows created here
             },
           },
         },
@@ -97,26 +96,10 @@ export const baseRouter = createTRPCRouter({
           tables: {
             include: {
               columns: true,
-              rows: true,
             },
           },
         },
       });
-
-      // Create cells for each row and column
-      for (const table of base.tables) {
-        for (const row of table.rows) {
-          for (const column of table.columns) {
-            await ctx.db.cell.create({
-              data: {
-                columnId: column.id,
-                rowId: row.id,
-                value: "",
-              },
-            });
-          }
-        }
-      }
 
       return base;
     }),

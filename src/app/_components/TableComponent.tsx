@@ -54,7 +54,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Access the utility functions for invalidating queries
   const utils = api.useUtils();
 
-  // Fetch table data
+  // Fetch table data - only columns, not rows
   const {
     data: tableData,
     isLoading,
@@ -62,23 +62,27 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   } = api.table.getTableData.useQuery(
     { tableId },
     {
-      onSuccess: (data) => {
-        // Initialize column types
-        const types: ColumnTypesState = {};
-        data.columns.forEach((col) => {
-          types[col.id] = col.type as ColumnType;
-        });
-        setColumnTypes(types);
-
-        // Use the data as is - it should already contain faker data from the server
-        setData(data.rows);
-      },
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,
       staleTime: 0,
     },
   );
+
+  // Handle table data when it's loaded
+  useEffect(() => {
+    if (tableData) {
+      // Initialize column types
+      const types: ColumnTypesState = {};
+      tableData.columns.forEach((col) => {
+        types[col.id] = col.type as ColumnType;
+      });
+      setColumnTypes(types);
+
+      // Start with empty data (no rows)
+      setData([]);
+    }
+  }, [tableData]);
 
   // Function to handle cell changes when a cell is being edited
   const handleCellChange = (
