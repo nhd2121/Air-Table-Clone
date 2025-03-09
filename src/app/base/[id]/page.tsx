@@ -23,9 +23,7 @@ export default async function BasePageWrapper({ params }: BasePageParams) {
   let tables = [];
   try {
     tables = await api.table.getTablesForBase({ baseId: params.id });
-  } catch (error) {
-    // If we can't fetch tables, continue with empty array
-  }
+  } catch (error) {}
 
   // Ensure there's at least one table
   const firstTable = tables[0];
