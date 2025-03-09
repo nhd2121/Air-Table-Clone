@@ -18,7 +18,7 @@ interface TableRow {
 }
 
 // Define column type options
-type ColumnType = "TEXT" | "NUMBER" | "DATE" | "BOOLEAN" | "SELECT";
+type ColumnType = "TEXT" | "NUMBER";
 
 // Define the column types state structure
 interface ColumnTypesState {
@@ -79,8 +79,10 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       });
       setColumnTypes(types);
 
-      // Start with empty data (no rows)
-      setData([]);
+      // Initialize data with rows
+      if (tableData.rows) {
+        setData(tableData.rows);
+      }
     }
   }, [tableData]);
 
@@ -104,7 +106,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     }));
   };
 
-  // When cell edit is complete, update both local state and database
+  // Modified: When cell edit is complete, update both local state and database
+  // without causing a full table reload
   const handleCellBlur = (rowId: string, columnId: string): void => {
     const cellKey = `${rowId}-${columnId}`;
     const value = editingCells[cellKey] || "";
@@ -114,14 +117,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       return;
     }
 
-    // Update the database
-    updateCell.mutate({
-      rowId,
-      columnId,
-      value,
-    });
-
-    // Update the local data state to match
+    // Update local data state first
     setData((old) =>
       old.map((row) => {
         if (row.id === rowId) {
@@ -132,6 +128,41 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         }
         return row;
       }),
+    );
+
+    // Then update the database without triggering a full data refetch
+    updateCell.mutate(
+      {
+        rowId,
+        columnId,
+        value,
+      },
+      {
+        // Important: Configure mutation options to prevent automatic invalidation
+        onSuccess: () => {
+          // We can optionally update a specific query data without refetching
+          // This is more targeted than a full invalidation
+          utils.table.getTableData.setData({ tableId }, (oldData) => {
+            if (!oldData) return oldData;
+
+            // Update just the specific cell in the cached data
+            const updatedRows = oldData.rows.map((row) => {
+              if (row.id === rowId) {
+                return {
+                  ...row,
+                  [columnId]: value,
+                };
+              }
+              return row;
+            });
+
+            return {
+              ...oldData,
+              rows: updatedRows,
+            };
+          });
+        },
+      },
     );
 
     // Clear this cell from editing state
@@ -166,25 +197,35 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   // Add column mutation
   const addColumn = api.table.addColumn.useMutation({
-    onSuccess: () => {
+    onSuccess: (newColumn) => {
       // Reset form values
       setNewColumnName("");
       setNewColumnType("TEXT");
       setShowAddColumnModal(false);
 
-      // Invalidate all relevant queries
-      utils.table.getTableData.invalidate({ tableId });
-      utils.table.getTablesForBase.invalidate();
+      // Instead of invalidating queries, update the local state
+      if (tableData) {
+        // Update column types
+        setColumnTypes((prev) => ({
+          ...prev,
+          [newColumn.id]: newColumn.type as ColumnType,
+        }));
+
+        // Update columns in tableData without refetching
+        utils.table.getTableData.setData({ tableId }, (oldData) => {
+          if (!oldData) return oldData;
+
+          return {
+            ...oldData,
+            columns: [...oldData.columns, newColumn],
+          };
+        });
+      }
     },
   });
 
   // Update cell mutation
-  const updateCell = api.table.updateCell.useMutation({
-    onSuccess: () => {
-      // Invalidate table data
-      utils.table.getTableData.invalidate({ tableId });
-    },
-  });
+  const updateCell = api.table.updateCell.useMutation();
 
   // Handle adding 100 rows
   const handleAdd100Rows = async () => {
@@ -193,17 +234,47 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     setIsAddingRows(true);
 
     try {
-      // Create an array to hold promises
-      const promises = [];
-
-      // Create 100 rows
+      // Create 100 rows sequentially to avoid overwhelming the database
       for (let i = 0; i < 100; i++) {
-        const promise = addRow.mutateAsync({ tableId });
-        promises.push(promise);
-      }
+        // Create a temporary optimistic row for the UI
+        const tempRowId = `temp-${Date.now()}-${i}`;
+        const tempRow: TableRow = { id: tempRowId };
 
-      // Wait for all rows to be created
-      await Promise.all(promises);
+        // Add empty values for all columns
+        tableData.columns.forEach((col) => {
+          tempRow[col.id] = "";
+        });
+
+        // Add to UI
+        setData((prev) => [...prev, tempRow]);
+
+        // Create the actual row in the database
+        const newRow = await addRow.mutateAsync({ tableId });
+
+        // Replace temp row with actual row
+        if (newRow) {
+          // Convert cells to row object
+          const newRowObj: TableRow = { id: newRow.id };
+          newRow.cells.forEach((cell) => {
+            const column = tableData.columns.find(
+              (col) => col.id === cell.columnId,
+            );
+            if (column) {
+              newRowObj[column.id] = cell.value || "";
+            }
+          });
+
+          // Update the data by replacing the temp row
+          setData((prev) =>
+            prev.map((row) => (row.id === tempRowId ? newRowObj : row)),
+          );
+        }
+
+        // Add a small delay between batches
+        if (i % 10 === 0 && i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
     } catch (error) {
       console.error("Error adding 100 rows:", error);
     } finally {
@@ -282,24 +353,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               onClick={() => changeColumnType(columnId, "NUMBER")}
             >
               Number
-            </div>
-            <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "DATE" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "DATE")}
-            >
-              Date
-            </div>
-            <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "BOOLEAN" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "BOOLEAN")}
-            >
-              Boolean
-            </div>
-            <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "SELECT" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "SELECT")}
-            >
-              Select
             </div>
           </div>
         )}
@@ -610,9 +663,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                 >
                   <option value="TEXT">Text</option>
                   <option value="NUMBER">Number</option>
-                  <option value="DATE">Date</option>
-                  <option value="BOOLEAN">Boolean</option>
-                  <option value="SELECT">Select</option>
                 </select>
               </div>
 

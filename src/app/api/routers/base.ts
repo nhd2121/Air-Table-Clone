@@ -47,7 +47,7 @@ export const baseRouter = createTRPCRouter({
       return base;
     }),
 
-  // Create a new base with default tables and random column names
+  // Create a new base with default tables and specific columns
   create: protectedProcedure
     .input(
       z.object({
@@ -56,27 +56,7 @@ export const baseRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Generate random column names using faker
-      const generateRandomColumns = () => {
-        const columnTypes = [
-          "TEXT",
-          "NUMBER",
-          "DATE",
-          "BOOLEAN",
-          "SELECT",
-        ] as const;
-        return [
-          { name: faker.database.column(), type: "TEXT" as const },
-          { name: faker.database.column(), type: "TEXT" as const },
-          { name: faker.database.column(), type: "TEXT" as const },
-          { name: faker.database.column(), type: "TEXT" as const },
-        ];
-      };
-
-      const randomColumns = generateRandomColumns();
-
-      // Create a new base with a default table and random columns
-      // BUT NO INITIAL ROWS
+      // Create a new base with a default table and specific columns
       const base = await ctx.db.base.create({
         data: {
           name: input.name,
@@ -86,7 +66,12 @@ export const baseRouter = createTRPCRouter({
             create: {
               name: "Table 1",
               columns: {
-                create: randomColumns,
+                create: [
+                  { name: "Name", type: "TEXT" },
+                  { name: "Email", type: "TEXT" },
+                  { name: "Phone", type: "TEXT" },
+                  { name: "Notes", type: "TEXT" },
+                ],
               },
               // No rows created here
             },
@@ -100,6 +85,46 @@ export const baseRouter = createTRPCRouter({
           },
         },
       });
+
+      // Now create 4 initial rows with faker data
+      if (base.tables && base.tables.length > 0) {
+        const table = base.tables[0];
+
+        // Create 4 rows
+        for (let i = 0; i < 4; i++) {
+          // First create a row
+          const row = await ctx.db.row.create({
+            data: {
+              table: { connect: { id: table.id } },
+            },
+          });
+
+          // Add cells with fake data for each column
+          for (const column of table.columns) {
+            let value = "";
+
+            // Generate appropriate fake data based on column name
+            if (column.name === "Name") {
+              value = faker.person.fullName();
+            } else if (column.name === "Email") {
+              value = faker.internet.email();
+            } else if (column.name === "Phone") {
+              value = faker.phone.number();
+            } else if (column.name === "Notes") {
+              value = faker.lorem.sentence();
+            }
+
+            // Create the cell
+            await ctx.db.cell.create({
+              data: {
+                columnId: column.id,
+                rowId: row.id,
+                value,
+              },
+            });
+          }
+        }
+      }
 
       return base;
     }),

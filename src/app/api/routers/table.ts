@@ -3,7 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { faker } from "@faker-js/faker";
 
-const ColumnTypeEnum = z.enum(["TEXT", "NUMBER", "DATE", "BOOLEAN", "SELECT"]);
+const ColumnTypeEnum = z.enum(["TEXT", "NUMBER"]);
 
 export const tableRouter = createTRPCRouter({
   // Get all tables for a base
@@ -95,7 +95,7 @@ export const tableRouter = createTRPCRouter({
       };
     }),
 
-  // Create a new table in a base with faker data
+  // Create a new table in a base with specific columns and initial data
   create: protectedProcedure
     .input(
       z.object({
@@ -120,75 +120,52 @@ export const tableRouter = createTRPCRouter({
         });
       }
 
-      // Generate random column names using faker
-      const columns = [
-        { name: faker.database.column(), type: "TEXT" as const },
-        { name: faker.database.column(), type: "TEXT" as const },
-        { name: faker.database.column(), type: "NUMBER" as const },
-        { name: faker.database.column(), type: "DATE" as const },
-      ];
-
-      // Create the table with random column names
+      // Create the table with specific column names
       const table = await ctx.db.table.create({
         data: {
           name: input.name,
           description: input.description,
           base: { connect: { id: input.baseId } },
           columns: {
-            create: columns,
+            create: [
+              { name: "Name", type: "TEXT" },
+              { name: "Email", type: "TEXT" },
+              { name: "Phone", type: "TEXT" },
+              { name: "Notes", type: "TEXT" },
+            ],
           },
-          rows: {
-            create: Array(10).fill({}), // Create 10 empty rows
-          },
+          // No rows created here
         },
         include: {
           columns: true,
-          rows: true,
         },
       });
 
-      // Generate faker data and create cells for each row and column
-      for (const row of table.rows) {
+      // Now create 4 initial rows with faker data
+      for (let i = 0; i < 4; i++) {
+        // First create a row
+        const row = await ctx.db.row.create({
+          data: {
+            table: { connect: { id: table.id } },
+          },
+        });
+
+        // Add cells with fake data for each column
         for (const column of table.columns) {
           let value = "";
 
-          // Generate data based on column type
-          switch (column.type) {
-            case "TEXT":
-              if (column.name.toLowerCase().includes("name")) {
-                value = faker.person.fullName();
-              } else if (column.name.toLowerCase().includes("email")) {
-                value = faker.internet.email();
-              } else if (column.name.toLowerCase().includes("address")) {
-                value = faker.location.streetAddress();
-              } else if (column.name.toLowerCase().includes("company")) {
-                value = faker.company.name();
-              } else if (column.name.toLowerCase().includes("phone")) {
-                value = faker.phone.number();
-              } else {
-                value = faker.lorem.sentence();
-              }
-              break;
-            case "NUMBER":
-              value = faker.number.int({ min: 1, max: 1000 }).toString();
-              break;
-            case "DATE":
-              value = faker.date.recent().toISOString().split("T")[0];
-              break;
-            case "BOOLEAN":
-              value = faker.datatype.boolean().toString();
-              break;
-            case "SELECT":
-              value = faker.helpers.arrayElement([
-                "Option 1",
-                "Option 2",
-                "Option 3",
-              ]);
-              break;
-            default:
-              value = faker.lorem.word();
+          // Generate appropriate fake data based on column name
+          if (column.name === "Name") {
+            value = faker.person.fullName();
+          } else if (column.name === "Email") {
+            value = faker.internet.email();
+          } else if (column.name === "Phone") {
+            value = faker.phone.number();
+          } else if (column.name === "Notes") {
+            value = faker.lorem.sentence();
           }
 
+          // Create the cell
           await ctx.db.cell.create({
             data: {
               columnId: column.id,
@@ -245,41 +222,20 @@ export const tableRouter = createTRPCRouter({
       for (const row of table.rows) {
         let value = "";
 
-        // Generate data based on column type
-        switch (input.type) {
-          case "TEXT":
-            if (input.name.toLowerCase().includes("name")) {
-              value = faker.person.fullName();
-            } else if (input.name.toLowerCase().includes("email")) {
-              value = faker.internet.email();
-            } else if (input.name.toLowerCase().includes("address")) {
-              value = faker.location.streetAddress();
-            } else if (input.name.toLowerCase().includes("company")) {
-              value = faker.company.name();
-            } else if (input.name.toLowerCase().includes("phone")) {
-              value = faker.phone.number();
-            } else {
-              value = faker.lorem.sentence();
-            }
-            break;
-          case "NUMBER":
-            value = faker.number.int({ min: 1, max: 1000 }).toString();
-            break;
-          case "DATE":
-            value = faker.date.recent().toISOString().split("T")[0];
-            break;
-          case "BOOLEAN":
-            value = faker.datatype.boolean().toString();
-            break;
-          case "SELECT":
-            value = faker.helpers.arrayElement([
-              "Option 1",
-              "Option 2",
-              "Option 3",
-            ]);
-            break;
-          default:
-            value = faker.lorem.word();
+        // Generate data based on column name first, then fall back to type
+        if (input.name.toLowerCase().includes("name")) {
+          value = faker.person.fullName();
+        } else if (input.name.toLowerCase().includes("email")) {
+          value = faker.internet.email();
+        } else if (input.name.toLowerCase().includes("phone")) {
+          value = faker.phone.number();
+        } else if (input.name.toLowerCase().includes("note")) {
+          value = faker.lorem.sentence();
+        } else if (input.type === "NUMBER") {
+          value = faker.number.int({ min: 1, max: 1000 }).toString();
+        } else {
+          // Default for TEXT type
+          value = faker.lorem.words(3);
         }
 
         await ctx.db.cell.create({
@@ -380,45 +336,24 @@ export const tableRouter = createTRPCRouter({
         },
       });
 
-      // Generate faker data for each column
+      // Generate appropriate faker data for each column
       for (const column of table.columns) {
         let value = "";
 
-        // Generate data based on column type
-        switch (column.type) {
-          case "TEXT":
-            if (column.name.toLowerCase().includes("name")) {
-              value = faker.person.fullName();
-            } else if (column.name.toLowerCase().includes("email")) {
-              value = faker.internet.email();
-            } else if (column.name.toLowerCase().includes("address")) {
-              value = faker.location.streetAddress();
-            } else if (column.name.toLowerCase().includes("company")) {
-              value = faker.company.name();
-            } else if (column.name.toLowerCase().includes("phone")) {
-              value = faker.phone.number();
-            } else {
-              value = faker.lorem.sentence();
-            }
-            break;
-          case "NUMBER":
-            value = faker.number.int({ min: 1, max: 1000 }).toString();
-            break;
-          case "DATE":
-            value = faker.date.recent().toISOString().split("T")[0];
-            break;
-          case "BOOLEAN":
-            value = faker.datatype.boolean().toString();
-            break;
-          case "SELECT":
-            value = faker.helpers.arrayElement([
-              "Option 1",
-              "Option 2",
-              "Option 3",
-            ]);
-            break;
-          default:
-            value = faker.lorem.word();
+        // Generate data based on column name first, then fall back to type
+        if (column.name === "Name") {
+          value = faker.person.fullName();
+        } else if (column.name === "Email") {
+          value = faker.internet.email();
+        } else if (column.name === "Phone") {
+          value = faker.phone.number();
+        } else if (column.name === "Notes") {
+          value = faker.lorem.sentence();
+        } else if (column.type === "NUMBER") {
+          value = faker.number.int({ min: 1, max: 1000 }).toString();
+        } else {
+          // Default for TEXT type
+          value = faker.lorem.words(3);
         }
 
         await ctx.db.cell.create({

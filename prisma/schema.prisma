@@ -104,11 +104,8 @@ model Cell {
 }
 
 enum ColumnType {
-    TEXT
-    NUMBER
-    DATE
-    BOOLEAN
-    SELECT
+  TEXT
+  NUMBER
 }
 
 // Necessary for Next auth
