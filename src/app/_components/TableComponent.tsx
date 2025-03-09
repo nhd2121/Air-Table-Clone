@@ -70,81 +70,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         });
         setColumnTypes(types);
 
-        // Check if we need to ensure we have at least 10 rows
-        if (data.rows.length < 10) {
-          // Instead of waiting for API calls to complete, create 10 rows immediately in the UI
-          const existingRows = [...data.rows];
-          const fakerRows: TableRow[] = [];
-
-          // Create a complete set of 10 rows
-          for (let i = 0; i < 10; i++) {
-            if (i < existingRows.length) {
-              // Use existing row
-              fakerRows.push(existingRows[i]);
-            } else {
-              // Create a temporary row with a fake ID until real one is created
-              const tempId = `temp-${i}`;
-              const newRow: TableRow = { id: tempId };
-
-              // Add the row to our UI data
-              fakerRows.push(newRow);
-
-              // Create the row in the database (but don't wait for it)
-              addRow.mutate(
-                { tableId },
-                {
-                  onSuccess: (addedRow) => {
-                    // When the row is created, update our internal data structure
-                    setData((prevData) =>
-                      prevData.map((row) =>
-                        row.id === tempId ? { ...row, id: addedRow.id } : row,
-                      ),
-                    );
-                  },
-                },
-              );
-            }
-          }
-
-          // Generate fake data for all 10 rows
-          const fakerData = generateFakerData(fakerRows, data.columns);
-          setData(fakerData);
-
-          // Update the cells in the database for existing rows (don't wait for new rows)
-          fakerData.forEach((row) => {
-            // Only update existing rows (not temporary ones)
-            if (!row.id.startsWith("temp-")) {
-              data.columns.forEach((col) => {
-                if (row[col.id]) {
-                  updateCell.mutate({
-                    rowId: row.id,
-                    columnId: col.id,
-                    value: row[col.id],
-                  });
-                }
-              });
-            }
-          });
-        } else {
-          // We have enough rows, just generate fake data for them
-          // Only take the first 10 rows for initial display
-          const initialRows = data.rows.slice(0, 10);
-          const fakerData = generateFakerData(initialRows, data.columns);
-          setData(fakerData);
-
-          // Update the cells in the database
-          fakerData.forEach((row) => {
-            data.columns.forEach((col) => {
-              if (row[col.id]) {
-                updateCell.mutate({
-                  rowId: row.id,
-                  columnId: col.id,
-                  value: row[col.id],
-                });
-              }
-            });
-          });
-        }
+        // Use the data as is - it should already contain faker data from the server
+        setData(data.rows);
       },
       refetchOnWindowFocus: false,
       refetchOnMount: true,
@@ -152,71 +79,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       staleTime: 0,
     },
   );
-
-  // Function to generate faker data based on column types
-  const generateFakerData = (rows: TableRow[], columns: any[]): TableRow[] => {
-    return rows.map((row) => {
-      const newRow: TableRow = { ...row };
-
-      columns.forEach((column) => {
-        const columnType = column.type as ColumnType;
-
-        switch (columnType) {
-          case "TEXT":
-            if (column.name.toLowerCase().includes("name")) {
-              newRow[column.id] = faker.person.fullName();
-            } else if (column.name.toLowerCase().includes("email")) {
-              newRow[column.id] = faker.internet.email();
-            } else if (column.name.toLowerCase().includes("address")) {
-              newRow[column.id] = faker.location.streetAddress();
-            } else if (column.name.toLowerCase().includes("company")) {
-              newRow[column.id] = faker.company.name();
-            } else if (column.name.toLowerCase().includes("phone")) {
-              newRow[column.id] = faker.phone.number();
-            } else if (
-              column.name.toLowerCase().includes("notes") ||
-              column.name.toLowerCase().includes("description")
-            ) {
-              newRow[column.id] = faker.lorem.sentence();
-            } else if (column.name.toLowerCase().includes("status")) {
-              newRow[column.id] = faker.helpers.arrayElement([
-                "Pending",
-                "In Progress",
-                "Completed",
-                "Cancelled",
-              ]);
-            } else if (column.name.toLowerCase().includes("assignee")) {
-              newRow[column.id] = faker.person.firstName();
-            } else {
-              newRow[column.id] = faker.lorem.words(2);
-            }
-            break;
-          case "NUMBER":
-            newRow[column.id] = faker.number
-              .int({ min: 1, max: 1000 })
-              .toString();
-            break;
-          case "DATE":
-            newRow[column.id] = faker.date.recent().toISOString().split("T")[0];
-            break;
-          case "BOOLEAN":
-            newRow[column.id] = faker.datatype.boolean().toString();
-            break;
-          case "SELECT":
-            newRow[column.id] = faker.helpers.arrayElement([
-              "Option 1",
-              "Option 2",
-              "Option 3",
-            ]);
-            break;
-          default:
-            newRow[column.id] = faker.lorem.word();
-        }
-      });
-
-      return newRow;
-    });
-  };
 
   // Function to handle cell changes when a cell is being edited
   const handleCellChange = (
@@ -279,35 +141,21 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Add row mutation
   const addRow = api.table.addRow.useMutation({
     onSuccess: (newRow) => {
-      // Create a new row object with empty values for all columns
-      const newRowObj: TableRow = { id: newRow.id };
-
-      if (tableData) {
-        tableData.columns.forEach((col) => {
-          newRowObj[col.id] = "";
-        });
-      }
-
-      // Generate faker data for the new row
-      const newRowWithFakerData = generateFakerData(
-        [newRowObj],
-        tableData?.columns || [],
-      )[0];
-
-      // Update local state
-      setData((prev) => [...prev, newRowWithFakerData]);
-
-      // Update the cells in the database with faker data
-      if (tableData) {
-        tableData.columns.forEach((col) => {
-          if (newRowWithFakerData[col.id]) {
-            updateCell.mutate({
-              rowId: newRow.id,
-              columnId: col.id,
-              value: newRowWithFakerData[col.id],
-            });
+      // Server should return row with faker data
+      if (newRow && tableData) {
+        // Convert the cells to a row object
+        const newRowObj: TableRow = { id: newRow.id };
+        newRow.cells.forEach((cell) => {
+          const column = tableData.columns.find(
+            (col) => col.id === cell.columnId,
+          );
+          if (column) {
+            newRowObj[column.id] = cell.value || "";
           }
         });
+
+        // Update local state
+        setData((prev) => [...prev, newRowObj]);
       }
     },
   });
@@ -341,54 +189,17 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     setIsAddingRows(true);
 
     try {
-      // Create an array to hold promises and new row objects
-      const newRows: TableRow[] = [];
+      // Create an array to hold promises
       const promises = [];
 
       // Create 100 rows
       for (let i = 0; i < 100; i++) {
-        const promise = addRow.mutateAsync({ tableId }).then((newRow) => {
-          // Create a new row object
-          const newRowObj: TableRow = { id: newRow.id };
-
-          // Add placeholder data for each column
-          if (tableData) {
-            tableData.columns.forEach((col) => {
-              newRowObj[col.id] = "";
-            });
-          }
-
-          // Generate fake data
-          const rowWithFakerData = generateFakerData(
-            [newRowObj],
-            tableData.columns,
-          )[0];
-
-          // Store the row with fake data
-          newRows.push(rowWithFakerData);
-
-          // Update cells in database
-          if (tableData) {
-            tableData.columns.forEach((col) => {
-              if (rowWithFakerData[col.id]) {
-                updateCell.mutate({
-                  rowId: newRow.id,
-                  columnId: col.id,
-                  value: rowWithFakerData[col.id],
-                });
-              }
-            });
-          }
-        });
-
+        const promise = addRow.mutateAsync({ tableId });
         promises.push(promise);
       }
 
       // Wait for all rows to be created
       await Promise.all(promises);
-
-      // Update the data state with all new rows
-      setData((prevData) => [...prevData, ...newRows]);
     } catch (error) {
       console.error("Error adding 100 rows:", error);
     } finally {

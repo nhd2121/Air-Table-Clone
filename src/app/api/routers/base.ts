@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import { faker } from "@faker-js/faker";
 
 export const baseRouter = createTRPCRouter({
   // Get all bases for the current user
@@ -46,7 +47,7 @@ export const baseRouter = createTRPCRouter({
       return base;
     }),
 
-  // Create a new base with default tables
+  // Create a new base with default tables and random column names
   create: protectedProcedure
     .input(
       z.object({
@@ -55,7 +56,26 @@ export const baseRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Create a new base with a default table
+      // Generate random column names using faker
+      const generateRandomColumns = () => {
+        const columnTypes = [
+          "TEXT",
+          "NUMBER",
+          "DATE",
+          "BOOLEAN",
+          "SELECT",
+        ] as const;
+        return [
+          { name: faker.database.column(), type: "TEXT" as const },
+          { name: faker.database.column(), type: "TEXT" as const },
+          { name: faker.database.column(), type: "TEXT" as const },
+          { name: faker.database.column(), type: "TEXT" as const },
+        ];
+      };
+
+      const randomColumns = generateRandomColumns();
+
+      // Create a new base with a default table and random columns
       const base = await ctx.db.base.create({
         data: {
           name: input.name,
@@ -65,21 +85,10 @@ export const baseRouter = createTRPCRouter({
             create: {
               name: "Table 1",
               columns: {
-                create: [
-                  { name: "Name", type: "TEXT" },
-                  { name: "Notes", type: "TEXT" },
-                  { name: "Assignee", type: "TEXT" },
-                  { name: "Status", type: "TEXT" },
-                ],
+                create: randomColumns,
               },
               rows: {
-                create: [
-                  {},
-                  {},
-                  {},
-                  {},
-                  {}, // Create 5 empty rows
-                ],
+                create: Array(10).fill({}), // Create 10 empty rows
               },
             },
           },
