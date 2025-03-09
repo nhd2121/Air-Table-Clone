@@ -26,6 +26,91 @@ model Post {
     @@index([name])
 }
 
+// New models for Base and Table
+model Base {
+    id          String   @id @default(cuid())
+    name        String
+    description String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    owner   User   @relation(fields: [ownerId], references: [id], name: "UserBases")
+    ownerId String
+    tables  Table[]
+
+    @@index([ownerId])
+}
+
+model Table {
+    id          String   @id @default(cuid())
+    name        String
+    description String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    base   Base   @relation(fields: [baseId], references: [id], onDelete: Cascade)
+    baseId String
+    columns Column[]
+    rows    Row[]
+
+    @@index([baseId])
+}
+
+model Column {
+    id        String     @id @default(cuid())
+    name      String
+    type      ColumnType @default(TEXT)
+    createdAt DateTime   @default(now())
+    updatedAt DateTime   @updatedAt
+
+    // Relations
+    table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+    tableId String
+    cells   Cell[]
+
+    @@index([tableId])
+}
+
+model Row {
+    id        String   @id @default(cuid())
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations
+    table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+    tableId String
+    cells   Cell[]
+
+    @@index([tableId])
+}
+
+model Cell {
+    value     String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations
+    column   Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
+    columnId String
+    row      Row    @relation(fields: [rowId], references: [id], onDelete: Cascade)
+    rowId    String
+
+    // This defines a composite primary key using both columnId and rowId
+    @@id([columnId, rowId])
+    @@index([columnId])
+    @@index([rowId])
+}
+
+enum ColumnType {
+    TEXT
+    NUMBER
+    DATE
+    BOOLEAN
+    SELECT
+}
+
 // Necessary for Next auth
 model Account {
     id                       String  @id @default(cuid())
@@ -63,6 +148,7 @@ model User {
     accounts      Account[]
     sessions      Session[]
     posts         Post[]
+    ownedBases    Base[] @relation("UserBases")
 }
 
 model VerificationToken {

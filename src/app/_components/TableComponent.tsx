@@ -7,66 +7,69 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { api } from "@/trpc/react";
 
 // Define the data structure for each row
 interface TableRow {
-  id: number;
-  name: string;
-  notes: string;
-  assignee: string;
-  status: string;
+  id: string;
+  [key: string]: string;
 }
 
 // Define column type options
-type ColumnType = "Text" | "Number";
+type ColumnType = "TEXT" | "NUMBER";
 
 // Define the column types state structure
 interface ColumnTypesState {
-  name: ColumnType;
-  notes: ColumnType;
-  assignee: ColumnType;
-  status: ColumnType;
+  [columnId: string]: ColumnType;
 }
 
-const AirTableGrid: React.FC = () => {
-  // Initial data with type safety
-  const [data, setData] = useState<TableRow[]>([
-    { id: 1, name: "", notes: "", assignee: "", status: "" },
-    { id: 2, name: "", notes: "", assignee: "", status: "" },
-    { id: 3, name: "", notes: "", assignee: "", status: "" },
-    { id: 4, name: "", notes: "", assignee: "", status: "" },
-    { id: 5, name: "", notes: "", assignee: "", status: "" },
-  ]);
+interface TableComponentProps {
+  tableId: string;
+}
 
-  // Column type state with type safety
-  const [columnTypes, setColumnTypes] = useState<ColumnTypesState>({
-    name: "Text",
-    notes: "Text",
-    assignee: "Text",
-    status: "Text",
-  });
-
+const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
+  // State to track data
+  const [data, setData] = useState<TableRow[]>([]);
+  // Column types
+  const [columnTypes, setColumnTypes] = useState<ColumnTypesState>({});
   // State for active dropdown
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Fetch table data
+  const {
+    data: tableData,
+    isLoading,
+    error,
+  } = api.table.getTableData.useQuery(
+    { tableId },
+    {
+      onSuccess: (data) => {
+        setData(data.rows || []);
+
+        // Initialize column types
+        const types: ColumnTypesState = {};
+        data.columns.forEach((col) => {
+          types[col.id] = col.type === "NUMBER" ? "NUMBER" : "TEXT";
+        });
+        setColumnTypes(types);
+      },
+    },
+  );
+
   // Handle cell value change with type safety
-  const updateData = (
-    rowIndex: number,
-    columnId: keyof TableRow,
-    value: string,
-  ): void => {
-    if (columnId === "id") return;
+  const updateData = (rowId: string, columnId: string, value: string): void => {
+    const columnType = columnTypes[columnId];
 
-    const columnType = columnTypes[columnId as keyof ColumnTypesState];
-
-    if (columnType === "Number" && isNaN(Number(value)) && value !== "") {
+    if (columnType === "NUMBER" && isNaN(Number(value)) && value !== "") {
       return;
     }
 
+    // Update local state
     setData((old) =>
-      old.map((row, index) => {
-        if (index === rowIndex) {
+      old.map((row) => {
+        if (row.id === rowId) {
           return {
             ...row,
             [columnId]: value,
@@ -75,26 +78,43 @@ const AirTableGrid: React.FC = () => {
         return row;
       }),
     );
+
+    // Update in the database
+    updateCell.mutate({
+      rowId,
+      columnId,
+      value,
+    });
   };
 
-  const addRow = (): void => {
-    const newRowId =
-      data.length > 0 ? Math.max(...data.map((row) => row.id)) + 1 : 1;
-    const newRow: TableRow = {
-      id: newRowId,
-      name: "",
-      notes: "",
-      assignee: "",
-      status: "",
-    };
-    setData([...data, newRow]);
+  // Add row mutation
+  const addRow = api.table.addRow.useMutation({
+    onSuccess: (newRow) => {
+      // Create a new row object with empty values for all columns
+      const newRowObj: TableRow = { id: newRow.id };
+
+      if (tableData) {
+        tableData.columns.forEach((col) => {
+          newRowObj[col.id] = "";
+        });
+      }
+
+      setData([...data, newRowObj]);
+    },
+  });
+
+  // Update cell mutation
+  const updateCell = api.table.updateCell.useMutation();
+
+  // Handle adding a new row
+  const handleAddRow = (): void => {
+    if (tableId) {
+      addRow.mutate({ tableId });
+    }
   };
 
   // Handle column type change
-  const changeColumnType = (
-    columnId: keyof ColumnTypesState,
-    type: ColumnType,
-  ): void => {
+  const changeColumnType = (columnId: string, type: ColumnType): void => {
     setColumnTypes((prevTypes) => ({
       ...prevTypes,
       [columnId]: type,
@@ -104,7 +124,7 @@ const AirTableGrid: React.FC = () => {
 
   // Create a reusable dropdown component for column headers
   const ColumnTypeDropdown: React.FC<{
-    columnId: keyof ColumnTypesState;
+    columnId: string;
     label: string;
   }> = ({ columnId, label }) => {
     return (
@@ -139,14 +159,14 @@ const AirTableGrid: React.FC = () => {
               Column Type
             </div>
             <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "Text" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "Text")}
+              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "TEXT" ? "bg-blue-50 text-blue-700" : ""}`}
+              onClick={() => changeColumnType(columnId, "TEXT")}
             >
               Text
             </div>
             <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "Number" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "Number")}
+              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "NUMBER" ? "bg-blue-50 text-blue-700" : ""}`}
+              onClick={() => changeColumnType(columnId, "NUMBER")}
             >
               Number
             </div>
@@ -160,107 +180,81 @@ const AirTableGrid: React.FC = () => {
   const columnHelper = createColumnHelper<TableRow>();
 
   // Define columns with proper typing
-  const columns = [
-    // Selection/row number column
-    columnHelper.display({
-      id: "select",
-      header: () => <input type="checkbox" className="rounded text-blue-500" />,
-      cell: ({ row }) => (
-        <div className="flex items-center">
-          <input type="checkbox" className="mr-2 rounded text-blue-500" />
-          <span>{row.original.id}</span>
-        </div>
-      ),
-      size: 60,
-    }),
+  const buildColumns = () => {
+    if (!tableData) return [];
 
-    // Data columns
-    columnHelper.accessor("name", {
-      header: () => <ColumnTypeDropdown columnId="name" label="Name" />,
-      cell: ({ row, column, getValue }) => (
-        <input
-          type={columnTypes.name === "Number" ? "number" : "text"}
-          value={getValue() || ""}
-          onChange={(e) =>
-            updateData(row.index, column.id as keyof TableRow, e.target.value)
-          }
-          className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      ),
-    }),
+    const columns = [
+      // Selection/row number column
+      columnHelper.display({
+        id: "select",
+        header: () => (
+          <input type="checkbox" className="rounded text-blue-500" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center">
+            <input type="checkbox" className="mr-2 rounded text-blue-500" />
+            <span>{row.index + 1}</span>
+          </div>
+        ),
+        size: 60,
+      }),
+    ];
 
-    columnHelper.accessor("notes", {
-      header: () => <ColumnTypeDropdown columnId="notes" label="Notes" />,
-      cell: ({ row, column, getValue }) => (
-        <input
-          type={columnTypes.notes === "Number" ? "number" : "text"}
-          value={getValue() || ""}
-          onChange={(e) =>
-            updateData(row.index, column.id as keyof TableRow, e.target.value)
-          }
-          className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      ),
-    }),
-
-    columnHelper.accessor("assignee", {
-      header: () => <ColumnTypeDropdown columnId="assignee" label="Assignee" />,
-      cell: ({ row, column, getValue }) => (
-        <input
-          type={columnTypes.assignee === "Number" ? "number" : "text"}
-          value={getValue() || ""}
-          onChange={(e) =>
-            updateData(row.index, column.id as keyof TableRow, e.target.value)
-          }
-          className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      ),
-    }),
-
-    columnHelper.accessor("status", {
-      header: () => <ColumnTypeDropdown columnId="status" label="Status" />,
-      cell: ({ row, column, getValue }) => (
-        <input
-          type={columnTypes.status === "Number" ? "number" : "text"}
-          value={getValue() || ""}
-          onChange={(e) =>
-            updateData(row.index, column.id as keyof TableRow, e.target.value)
-          }
-          className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      ),
-    }),
+    // Add data columns
+    tableData.columns.forEach((column) => {
+      columns.push(
+        columnHelper.accessor(column.id, {
+          header: () => (
+            <ColumnTypeDropdown columnId={column.id} label={column.name} />
+          ),
+          cell: ({ row, column: col, getValue }) => (
+            <input
+              type={columnTypes[column.id] === "NUMBER" ? "number" : "text"}
+              value={(getValue() as string) || ""}
+              onChange={(e) =>
+                updateData(row.original.id, column.id, e.target.value)
+              }
+              className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          ),
+        }),
+      );
+    });
 
     // Add column button
-    columnHelper.display({
-      id: "addColumn",
-      header: () => (
-        <button className="text-gray-500 hover:text-gray-700">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </button>
-      ),
-      cell: () => null,
-      size: 40,
-    }),
-  ];
+    columns.push(
+      columnHelper.display({
+        id: "addColumn",
+        header: () => (
+          <button className="text-gray-500 hover:text-gray-700">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        ),
+        cell: () => null,
+        size: 40,
+      }),
+    );
+
+    return columns;
+  };
 
   // Initialize TanStack table with proper typing
   const table = useReactTable<TableRow>({
     data,
-    columns,
+    columns: buildColumns(),
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -280,6 +274,22 @@ const AirTableGrid: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [dropdownRef]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        Loading table data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center text-red-500">
+        Error loading table: {error.message}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col border border-gray-200">
@@ -332,7 +342,8 @@ const AirTableGrid: React.FC = () => {
         <div className="flex items-center">
           <button
             className="mr-2 rounded-full p-1 hover:bg-gray-100"
-            onClick={addRow}
+            onClick={handleAddRow}
+            disabled={addRow.isPending}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -356,4 +367,4 @@ const AirTableGrid: React.FC = () => {
   );
 };
 
-export default AirTableGrid;
+export default TableComponent;
