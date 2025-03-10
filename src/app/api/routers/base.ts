@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { faker } from "@faker-js/faker";
+import { Base, Column, Table } from "@/type/db";
 
 export const baseRouter = createTRPCRouter({
   // Get all bases for the current user
@@ -89,6 +90,12 @@ export const baseRouter = createTRPCRouter({
       // Now create 4 initial rows with faker data
       if (base.tables && base.tables.length > 0) {
         const table = base.tables[0];
+        if (!table) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Table not found",
+          });
+        }
 
         // Create 4 rows
         for (let i = 0; i < 4; i++) {
@@ -126,7 +133,11 @@ export const baseRouter = createTRPCRouter({
         }
       }
 
-      return base;
+      return base as Base & {
+        tables: (Table & {
+          columns: Column[];
+        })[];
+      };
     }),
 
   // Update a base

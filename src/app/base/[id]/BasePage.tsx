@@ -2,8 +2,8 @@
 
 import { BaseNavbar } from "@/app/_components/mainPageNavBar";
 import TableComponent from "@/app/_components/TableComponent";
-import { useState, useEffect } from "react";
-import { api } from "@/trpc/react";
+import type { Table } from "@/type/db";
+import { useState } from "react";
 
 interface BasePageProps {
   base: {
@@ -11,7 +11,7 @@ interface BasePageProps {
     name: string;
     description?: string;
   };
-  tables: any[];
+  tables: Table[];
   firstTableId: string;
 }
 

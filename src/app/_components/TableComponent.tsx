@@ -370,6 +370,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   } | null>(null);
 
   // Define columns with proper typing
+  // Define columns with proper typing
   const buildColumns = () => {
     if (!tableData) return [];
 
@@ -390,14 +391,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       }),
     ];
 
-    // Add data columns
+    // Add data columns using columnHelper.accessor properly
     tableData.columns.forEach((column) => {
       columns.push(
-        columnHelper.accessor(column.id, {
+        // Use display column instead of accessor for dynamic properties
+        columnHelper.display({
+          id: column.id,
           header: () => (
             <ColumnTypeDropdown columnId={column.id} label={column.name} />
           ),
-          cell: ({ row, column: col }) => {
+          cell: ({ row }) => {
             const rowId = row.original.id;
             const columnId = column.id;
             const cellKey = `${rowId}-${columnId}`;
@@ -409,7 +412,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             const value =
               cellKey in editingCells
                 ? editingCells[cellKey]
-                : row.original[columnId] || "";
+                : (row.original[columnId] ?? "");
 
             // If the cell is being edited, show an input field
             if (isEditing) {
@@ -440,6 +443,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               </div>
             );
           },
+          size: 150, // Add a default size
         }),
       );
     });

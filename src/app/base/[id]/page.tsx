@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { HydrateClient } from "@/trpc/server";
 import { api } from "@/trpc/server";
 import BasePage from "./BasePage";
+import type { Table } from "@/type/db";
 
 // Define a proper type for props
 interface Props {
@@ -22,7 +23,7 @@ export default async function BasePageWrapper(props: Props) {
   }
 
   // Fetch the tables for this base
-  let tables = [];
+  let tables: Table[] = [];
   try {
     tables = await api.table.getTablesForBase({ baseId: id });
   } catch (error) {

@@ -4,9 +4,10 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Sidebar } from "./mainPageSideBar";
+import type { Session } from "next-auth";
 
 interface HomeContentProps {
-  initialSession: any;
+  initialSession: Session | null;
 }
 
 export default function HomeContent({ initialSession }: HomeContentProps) {

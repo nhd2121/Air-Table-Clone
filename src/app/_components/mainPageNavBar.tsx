@@ -5,12 +5,19 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { api } from "@/trpc/react";
 
+// Define a proper Table type
+interface Table {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
 interface BaseNavbarProps {
   baseName: string;
   baseId: string;
-  tables: any[];
+  tables: Table[];
   onTableSelect?: (tableId: string) => void;
-  onTableCreated?: (newTable: any) => void;
+  onTableCreated?: (newTable: Table) => void;
   activeTableId?: string;
 }
 
@@ -121,9 +128,9 @@ export function BaseNavbar({
     // Find the highest number in existing table names
     const tableNumberRegex = /Table (\d+)/;
     tables.forEach((table) => {
-      const match = table.name.match(tableNumberRegex);
+      const match = tableNumberRegex.exec(table.name);
       if (match) {
-        const num = parseInt(match[1], 10);
+        const num = parseInt(match[1] ?? "0", 10);
         if (num >= nextTableNumber) {
           nextTableNumber = num + 1;
         }
