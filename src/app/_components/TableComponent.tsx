@@ -83,14 +83,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     {
       refetchOnWindowFocus: false,
       enabled: shouldUseSearch,
-      onSuccess: () => {
-        setIsSearching(false);
-      },
-      onError: () => {
-        setIsSearching(false);
-      },
     },
   );
+
+  useEffect(() => {
+    if (shouldUseSearch && !searchQuery.isLoading) {
+      setIsSearching(false);
+    }
+  }, [searchQuery.isLoading, shouldUseSearch]);
 
   // Use the appropriate query result based on search state
   const {
@@ -144,7 +144,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     }));
   };
 
-  // Modified: When cell edit is complete, update both local state and database
+  // When cell edit is complete, update both local state and database
   // without causing a full table reload
   const handleCellBlur = (rowId: string, columnId: string): void => {
     const cellKey = `${rowId}-${columnId}`;
@@ -176,10 +176,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         value,
       },
       {
-        // Important: Configure mutation options to prevent automatic invalidation
         onSuccess: () => {
-          // We can optionally update a specific query data without refetching
-          // This is more targeted than a full invalidation
           if (shouldUseSearch) {
             utils.table.searchTableData.setData(
               { tableId, searchTerm: searchTerm.trim() },
@@ -786,7 +783,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       {/* Search Results Count - Only show after search is complete */}
       {searchTerm && !isSearching && !showSearchMessage && (
         <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
-          Found {data.length} {data.length === 1 ? "result" : "results"} for "
+          Found {data.length} {data.length === 1 ? "result" : "results"} for
+          &quot;
           {searchTerm}&quot;
         </div>
       )}
