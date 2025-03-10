@@ -23,9 +23,24 @@ export function CreateBaseModal({ isOpen, onClose }: CreateBaseModalProps) {
       onClose();
     },
     onError: (error) => {
-      setError(error.message);
+      console.error("Create base error:", error);
+      // Check if this is just a network error but the operation succeeded
+      if (
+        error.message.includes("Stream closed") ||
+        error.message.includes("network")
+      ) {
+        // Try to check if the base was actually created despite the error
+        void utils.base.getAll.invalidate().then(() => {
+          setError(
+            "Connection issue. Please refresh to see if your workspace was created.",
+          );
+        });
+      } else {
+        setError(error.message);
+      }
       setIsLoading(false);
     },
+    retry: 0,
     onSettled: () => {
       setIsLoading(false);
     },
