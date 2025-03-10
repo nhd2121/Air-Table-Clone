@@ -57,87 +57,96 @@ export const baseRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Create a new base with a default table and specific columns
-      const base = await ctx.db.base.create({
-        data: {
-          name: input.name,
-          description: input.description,
-          owner: { connect: { id: ctx.session.user.id } },
-          tables: {
-            create: {
-              name: "Table 1",
-              columns: {
-                create: [
-                  { name: "Name", type: "TEXT" },
-                  { name: "Email", type: "TEXT" },
-                  { name: "Phone", type: "TEXT" },
-                  { name: "Notes", type: "TEXT" },
-                ],
+      try {
+        // Create a new base with a default table and specific columns
+        const base = await ctx.db.base.create({
+          data: {
+            name: input.name,
+            description: input.description,
+            owner: { connect: { id: ctx.session.user.id } },
+            tables: {
+              create: {
+                name: "Table 1",
+                columns: {
+                  create: [
+                    { name: "Name", type: "TEXT" },
+                    { name: "Email", type: "TEXT" },
+                    { name: "Phone", type: "TEXT" },
+                    { name: "Notes", type: "TEXT" },
+                  ],
+                },
+                // No rows created here
               },
-              // No rows created here
             },
           },
-        },
-        include: {
-          tables: {
-            include: {
-              columns: true,
+          include: {
+            tables: {
+              include: {
+                columns: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      // Now create 4 initial rows with faker data
-      if (base.tables && base.tables.length > 0) {
-        const table = base.tables[0];
-        if (!table) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Table not found",
-          });
-        }
-
-        // Create 4 rows
-        for (let i = 0; i < 4; i++) {
-          // First create a row
-          const row = await ctx.db.row.create({
-            data: {
-              table: { connect: { id: table.id } },
-            },
-          });
-
-          // Add cells with fake data for each column
-          for (const column of table.columns) {
-            let value = "";
-
-            // Generate appropriate fake data based on column name
-            if (column.name === "Name") {
-              value = faker.person.fullName();
-            } else if (column.name === "Email") {
-              value = faker.internet.email();
-            } else if (column.name === "Phone") {
-              value = faker.phone.number();
-            } else if (column.name === "Notes") {
-              value = faker.lorem.sentence();
-            }
-
-            // Create the cell
-            await ctx.db.cell.create({
-              data: {
-                columnId: column.id,
-                rowId: row.id,
-                value,
-              },
+        // Now create 4 initial rows with faker data
+        if (base.tables && base.tables.length > 0) {
+          const table = base.tables[0];
+          if (!table) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Table not found",
             });
           }
-        }
-      }
 
-      return base as Base & {
-        tables: (Table & {
-          columns: Column[];
-        })[];
-      };
+          // Create 4 rows
+          for (let i = 0; i < 4; i++) {
+            // First create a row
+            const row = await ctx.db.row.create({
+              data: {
+                table: { connect: { id: table.id } },
+              },
+            });
+
+            // Add cells with fake data for each column
+            for (const column of table.columns) {
+              let value = "";
+
+              // Generate appropriate fake data based on column name
+              if (column.name === "Name") {
+                value = faker.person.fullName();
+              } else if (column.name === "Email") {
+                value = faker.internet.email();
+              } else if (column.name === "Phone") {
+                value = faker.phone.number();
+              } else if (column.name === "Notes") {
+                value = faker.lorem.sentence();
+              }
+
+              // Create the cell
+              await ctx.db.cell.create({
+                data: {
+                  columnId: column.id,
+                  rowId: row.id,
+                  value,
+                },
+              });
+            }
+          }
+        }
+
+        return base as Base & {
+          tables: (Table & {
+            columns: Column[];
+          })[];
+        };
+      } catch (error) {
+        console.error("Error creating base:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create workspace",
+          cause: error,
+        });
+      }
     }),
 
   // Update a base
