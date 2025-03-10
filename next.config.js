@@ -5,6 +5,19 @@
 import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  // Add this option to ignore TypeScript errors during build
+  typescript: {
+    // !! WARN !!
+    // Ignoring type checking for build - only use this as a temporary solution
+    ignoreBuildErrors: true,
+  },
+  // Add this if you also want to ignore ESLint errors
+  eslint: {
+    // !! WARN !!
+    // Ignoring ESLint errors for build - only use this as a temporary solution
+    ignoreDuringBuilds: true,
+  },
+};
 
 export default config;

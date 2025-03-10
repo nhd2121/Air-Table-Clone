@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
-import { faker } from "@faker-js/faker";
 
 // Define the data structure for each row
 interface TableRow {
@@ -21,9 +20,7 @@ interface TableRow {
 type ColumnType = "TEXT" | "NUMBER";
 
 // Define the column types state structure
-interface ColumnTypesState {
-  [columnId: string]: ColumnType;
-}
+type ColumnTypesState = Record<string, ColumnType>;
 
 interface TableComponentProps {
   tableId: string;
@@ -81,7 +78,15 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
       // Initialize data with rows
       if (tableData.rows) {
-        setData(tableData.rows);
+        // Ensure all rows conform to the TableRow interface by explicitly checking for id
+        const typedRows: TableRow[] = tableData.rows.map((row) => {
+          // Make sure each row has an id
+          if (!("id" in row)) {
+            console.error("Row is missing id property", row);
+          }
+          return row as TableRow;
+        });
+        setData(typedRows);
       }
     }
   }, [tableData]);
@@ -110,7 +115,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // without causing a full table reload
   const handleCellBlur = (rowId: string, columnId: string): void => {
     const cellKey = `${rowId}-${columnId}`;
-    const value = editingCells[cellKey] || "";
+    const value = editingCells[cellKey] ?? "";
 
     // Skip updates for temporary rows that haven't been created in the database yet
     if (rowId.startsWith("temp-")) {
@@ -185,7 +190,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             (col) => col.id === cell.columnId,
           );
           if (column) {
-            newRowObj[column.id] = cell.value || "";
+            newRowObj[column.id] = cell.value ?? "";
           }
         });
 
@@ -260,7 +265,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               (col) => col.id === cell.columnId,
             );
             if (column) {
-              newRowObj[column.id] = cell.value || "";
+              newRowObj[column.id] = cell.value ?? "";
             }
           });
 
@@ -540,10 +545,12 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Get the virtualized rows
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalHeight = rowVirtualizer.getTotalSize();
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+
+  // Use optional chaining to safely access properties
+  const paddingTop = virtualRows.length > 0 ? (virtualRows[0]?.start ?? 0) : 0;
   const paddingBottom =
     virtualRows.length > 0
-      ? totalHeight - virtualRows[virtualRows.length - 1].end
+      ? totalHeight - (virtualRows[virtualRows.length - 1]?.end ?? 0)
       : 0;
 
   return (

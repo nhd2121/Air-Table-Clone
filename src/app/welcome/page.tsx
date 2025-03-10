@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 export default function WelcomePage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
 
   // If user is already logged in, redirect to the main page

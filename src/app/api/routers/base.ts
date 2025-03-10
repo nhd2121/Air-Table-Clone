@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { faker } from "@faker-js/faker";
-import { Base, Column, Table } from "@/type/db";
+import type { Base, Column, Table } from "@/type/db";
 
 export const baseRouter = createTRPCRouter({
   // Get all bases for the current user

@@ -4,21 +4,21 @@ import { api } from "@/trpc/server";
 import BasePage from "./BasePage";
 import type { Table } from "@/type/db";
 
-// Define a proper type for props
-interface Props {
-  params: {
-    id: string;
-  };
+// Define proper types for the page props
+interface PageProps {
+  params: { id: string };
+  searchParams?: Record<string, string | string[] | undefined>;
 }
 
-export default async function BasePageWrapper(props: Props) {
-  const id = props.params.id;
+export default async function BasePageWrapper({ params }: PageProps) {
+  const id = params.id;
 
   // Fetch the base data
   let base;
   try {
     base = await api.base.getById({ id });
   } catch (error) {
+    console.error("Error fetching base:", error);
     notFound();
   }
 
@@ -27,6 +27,7 @@ export default async function BasePageWrapper(props: Props) {
   try {
     tables = await api.table.getTablesForBase({ baseId: id });
   } catch (error) {
+    console.error("Error fetching tables:", error);
     // If we can't fetch tables, continue with empty array
   }
 
@@ -36,9 +37,30 @@ export default async function BasePageWrapper(props: Props) {
     notFound();
   }
 
+  // Extract only the properties needed by BasePage component
+  const baseProps = {
+    id: base.id,
+    name: base.name,
+    // Convert null to undefined for description if needed
+    description: base.description ?? undefined,
+  };
+
+  const formattedTables = tables.map((table) => ({
+    id: table.id,
+    name: table.name,
+    description: table.description,
+    createdAt: table.createdAt,
+    updatedAt: table.updatedAt,
+    baseId: table.baseId,
+  }));
+
   return (
     <HydrateClient>
-      <BasePage base={base} tables={tables} firstTableId={firstTable.id} />
+      <BasePage
+        base={baseProps}
+        tables={formattedTables}
+        firstTableId={firstTable.id}
+      />
     </HydrateClient>
   );
 }

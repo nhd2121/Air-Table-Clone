@@ -4,13 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { api } from "@/trpc/react";
-
-// Define a proper Table type
-interface Table {
-  id: string;
-  name: string;
-  description?: string | null;
-}
+import type { Table } from "@/type/db";
 
 interface BaseNavbarProps {
   baseName: string;
@@ -41,8 +35,8 @@ export function BaseNavbar({
   const updateBase = api.base.update.useMutation({
     onSuccess: () => {
       // Invalidate the query cache to refresh the data
-      utils.base.getById.invalidate({ id: baseId });
-      utils.base.getAll.invalidate();
+      void utils.base.getById.invalidate({ id: baseId });
+      void utils.base.getAll.invalidate();
     },
   });
 
@@ -57,8 +51,8 @@ export function BaseNavbar({
       }
 
       // Invalidate the query cache to refresh the data
-      utils.table.getTablesForBase.invalidate({ baseId });
-      utils.base.getById.invalidate({ id: baseId });
+      void utils.table.getTablesForBase.invalidate({ baseId });
+      void utils.base.getById.invalidate({ id: baseId });
     },
     onError: (error) => {
       console.error("Error creating table:", error);

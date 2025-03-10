@@ -2,14 +2,14 @@
 
 import { BaseNavbar } from "@/app/_components/mainPageNavBar";
 import TableComponent from "@/app/_components/TableComponent";
-import type { Table } from "@/type/db";
 import { useState } from "react";
+import type { Table } from "@/type/db";
 
 interface BasePageProps {
   base: {
     id: string;
     name: string;
-    description?: string;
+    description?: string | null;
   };
   tables: Table[];
   firstTableId: string;
@@ -32,7 +32,7 @@ export default function BasePage({
   };
 
   // Handle table creation
-  const handleTableCreated = (newTable: any) => {
+  const handleTableCreated = (newTable: Table) => {
     // Add the new table to our state
     setTables((currentTables) => [...currentTables, newTable]);
     // Select the newly created table

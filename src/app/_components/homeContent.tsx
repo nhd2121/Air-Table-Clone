@@ -11,7 +11,7 @@ interface HomeContentProps {
 }
 
 export default function HomeContent({ initialSession }: HomeContentProps) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
 
   // Redirect to welcome page if not authenticated
