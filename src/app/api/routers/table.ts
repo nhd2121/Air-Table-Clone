@@ -95,6 +95,154 @@ export const tableRouter = createTRPCRouter({
       };
     }),
 
+  // NEW ENDPOINT: Search for data within a table at the database level
+  searchTableData: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string(),
+        searchTerm: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      // First verify the table belongs to a base owned by the user
+      const table = await ctx.db.table.findFirst({
+        where: {
+          id: input.tableId,
+          base: {
+            ownerId: ctx.session.user.id,
+          },
+        },
+        include: {
+          columns: {
+            orderBy: {
+              createdAt: "asc",
+            },
+          },
+        },
+      });
+
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found or you don't have access",
+        });
+      }
+
+      // If search term is empty, return all rows
+      if (!input.searchTerm.trim()) {
+        return ctx.db.table
+          .findFirst({
+            where: {
+              id: input.tableId,
+            },
+            include: {
+              columns: {
+                orderBy: {
+                  createdAt: "asc",
+                },
+              },
+              rows: {
+                orderBy: {
+                  createdAt: "asc",
+                },
+                include: {
+                  cells: true,
+                },
+              },
+            },
+          })
+          .then((table) => {
+            if (!table) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Table not found",
+              });
+            }
+
+            // Transform data into a more convenient format for the frontend
+            const formattedRows = table.rows.map((row) => {
+              const rowData: Record<string, string> = { id: row.id };
+
+              row.cells.forEach((cell) => {
+                const column = table.columns.find(
+                  (col) => col.id === cell.columnId,
+                );
+                if (column) {
+                  rowData[column.id] = cell.value ?? "";
+                }
+              });
+
+              return rowData;
+            });
+
+            return {
+              table,
+              columns: table.columns,
+              rows: formattedRows,
+            };
+          });
+      }
+
+      // Get rows that have cells containing the search term
+      // First find cells that contain the search term
+      const matchingCells = await ctx.db.cell.findMany({
+        where: {
+          column: {
+            tableId: input.tableId,
+          },
+          value: {
+            contains: input.searchTerm,
+            mode: "insensitive", // Case-insensitive search
+          },
+        },
+        include: {
+          row: true,
+        },
+      });
+
+      // Extract unique row IDs
+      const matchingRowIds = [
+        ...new Set(matchingCells.map((cell) => cell.rowId)),
+      ];
+
+      // Get the full data for these rows
+      const rows = await ctx.db.row.findMany({
+        where: {
+          id: {
+            in: matchingRowIds,
+          },
+          tableId: input.tableId,
+        },
+        include: {
+          cells: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      // Transform data into a more convenient format for the frontend
+      const formattedRows = rows.map((row) => {
+        const rowData: Record<string, string> = { id: row.id };
+
+        row.cells.forEach((cell) => {
+          const column = table.columns.find((col) => col.id === cell.columnId);
+          if (column) {
+            rowData[column.id] = cell.value ?? "";
+          }
+        });
+
+        return rowData;
+      });
+
+      return {
+        table,
+        columns: table.columns,
+        rows: formattedRows,
+        searchTerm: input.searchTerm,
+      };
+    }),
+
   // Create a new table in a base with specific columns and initial data
   create: protectedProcedure
     .input(

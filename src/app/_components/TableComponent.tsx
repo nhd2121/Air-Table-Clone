@@ -45,26 +45,59 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Local state to track current edits before sending to database
   const [editingCells, setEditingCells] = useState<Record<string, string>>({});
 
+  // Add search functionality
+  const [searchTerm, setSearchTerm] = useState("");
+  // State to track if the search is being performed
+  const [isSearching, setIsSearching] = useState(false);
+  // Track if we should show a message about performing a search
+  const [showSearchMessage, setShowSearchMessage] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  // Ref for search input to implement debounce
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Debounce timeout reference
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Access the utility functions for invalidating queries
   const utils = api.useUtils();
 
-  // Fetch table data - only columns, not rows
-  const {
-    data: tableData,
-    isLoading,
-    error,
-  } = api.table.getTableData.useQuery(
+  // Determine which query to use based on search term
+  const shouldUseSearch = searchTerm.trim().length > 0;
+
+  // Regular data query
+  const regularDataQuery = api.table.getTableData.useQuery(
     { tableId },
     {
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,
       staleTime: 0,
+      enabled: !shouldUseSearch,
     },
   );
+
+  // Search query
+  const searchQuery = api.table.searchTableData.useQuery(
+    { tableId, searchTerm: searchTerm.trim() },
+    {
+      refetchOnWindowFocus: false,
+      enabled: shouldUseSearch,
+      onSuccess: () => {
+        setIsSearching(false);
+      },
+      onError: () => {
+        setIsSearching(false);
+      },
+    },
+  );
+
+  // Use the appropriate query result based on search state
+  const {
+    data: tableData,
+    isLoading,
+    error,
+  } = shouldUseSearch ? searchQuery : regularDataQuery;
 
   // Handle table data when it's loaded
   useEffect(() => {
@@ -147,25 +180,50 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         onSuccess: () => {
           // We can optionally update a specific query data without refetching
           // This is more targeted than a full invalidation
-          utils.table.getTableData.setData({ tableId }, (oldData) => {
-            if (!oldData) return oldData;
+          if (shouldUseSearch) {
+            utils.table.searchTableData.setData(
+              { tableId, searchTerm: searchTerm.trim() },
+              (oldData) => {
+                if (!oldData) return oldData;
 
-            // Update just the specific cell in the cached data
-            const updatedRows = oldData.rows.map((row) => {
-              if (row.id === rowId) {
+                // Update just the specific cell in the cached data
+                const updatedRows = oldData.rows.map((row) => {
+                  if (row.id === rowId) {
+                    return {
+                      ...row,
+                      [columnId]: value,
+                    };
+                  }
+                  return row;
+                });
+
                 return {
-                  ...row,
-                  [columnId]: value,
+                  ...oldData,
+                  rows: updatedRows,
                 };
-              }
-              return row;
-            });
+              },
+            );
+          } else {
+            utils.table.getTableData.setData({ tableId }, (oldData) => {
+              if (!oldData) return oldData;
 
-            return {
-              ...oldData,
-              rows: updatedRows,
-            };
-          });
+              // Update just the specific cell in the cached data
+              const updatedRows = oldData.rows.map((row) => {
+                if (row.id === rowId) {
+                  return {
+                    ...row,
+                    [columnId]: value,
+                  };
+                }
+                return row;
+              });
+
+              return {
+                ...oldData,
+                rows: updatedRows,
+              };
+            });
+          }
         },
       },
     );
@@ -217,14 +275,28 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         }));
 
         // Update columns in tableData without refetching
-        utils.table.getTableData.setData({ tableId }, (oldData) => {
-          if (!oldData) return oldData;
+        if (shouldUseSearch) {
+          utils.table.searchTableData.setData(
+            { tableId, searchTerm: searchTerm.trim() },
+            (oldData) => {
+              if (!oldData) return oldData;
 
-          return {
-            ...oldData,
-            columns: [...oldData.columns, newColumn],
-          };
-        });
+              return {
+                ...oldData,
+                columns: [...oldData.columns, newColumn],
+              };
+            },
+          );
+        } else {
+          utils.table.getTableData.setData({ tableId }, (oldData) => {
+            if (!oldData) return oldData;
+
+            return {
+              ...oldData,
+              columns: [...oldData.columns, newColumn],
+            };
+          });
+        }
       }
     },
   });
@@ -311,6 +383,49 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     setActiveDropdown(null);
   };
 
+  // Handle search with debounce
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+
+    // Set searching state
+    if (value.trim()) {
+      setIsSearching(true);
+    }
+
+    // Clear any existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // If search is empty, immediately clear search results
+    if (value.trim() === "") {
+      setIsSearching(false);
+      return;
+    }
+
+    // Show the search message
+    setShowSearchMessage(true);
+
+    // Debounce the search to avoid too many requests
+    searchTimeoutRef.current = setTimeout(() => {
+      // This will trigger the search query due to the dependency on searchTerm
+      setShowSearchMessage(false);
+    }, 500);
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchTerm("");
+    setIsSearching(false);
+    setShowSearchMessage(false);
+    // Clear the timeout if it exists
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+  };
+
   // Create a reusable dropdown component for column headers
   const ColumnTypeDropdown: React.FC<{
     columnId: string;
@@ -375,7 +490,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   } | null>(null);
 
   // Define columns with proper typing
-  // Define columns with proper typing
   const buildColumns = () => {
     if (!tableData) return [];
 
@@ -418,6 +532,34 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               cellKey in editingCells
                 ? editingCells[cellKey]
                 : (row.original[columnId] ?? "");
+
+            // Highlight matching text if searching
+            if (
+              !isEditing &&
+              searchTerm &&
+              (value ?? "")
+                .toString()
+                .toLowerCase()
+                .includes(searchTerm.toLowerCase())
+            ) {
+              const valueLower = (value ?? "").toString().toLowerCase();
+              const searchLower = searchTerm.toLowerCase();
+              const startIndex = valueLower.indexOf(searchLower);
+              const endIndex = startIndex + searchLower.length;
+
+              return (
+                <div
+                  className="w-full cursor-pointer p-2 hover:bg-gray-50"
+                  onClick={() => setEditingCell({ rowId, columnId })}
+                >
+                  {(value ?? "").toString().substring(0, startIndex)}
+                  <span className="bg-yellow-200 font-medium">
+                    {(value ?? "").toString().substring(startIndex, endIndex)}
+                  </span>
+                  {(value ?? "").toString().substring(endIndex)}
+                </div>
+              );
+            }
 
             // If the cell is being edited, show an input field
             if (isEditing) {
@@ -488,7 +630,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   // Initialize TanStack table with proper typing
   const table = useReactTable<TableRow>({
-    data,
+    data: data, // Use the data from the server
     columns: buildColumns(),
     getCoreRowModel: getCoreRowModel(),
   });
@@ -526,7 +668,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     };
   }, [dropdownRef, modalRef, showAddColumnModal]);
 
-  if (isLoading) {
+  // Clean up timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (isLoading && !isSearching) {
     return (
       <div className="flex h-64 items-center justify-center">
         Loading table data...
@@ -555,10 +706,105 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   return (
     <div className="flex h-full flex-col border border-gray-200">
+      {/* Search Bar */}
+      <div className="flex items-center border-b border-gray-200 bg-white p-2">
+        <div className="relative flex-grow">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <svg
+              className="h-5 w-5 text-gray-400"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchTerm}
+            onChange={handleSearchChange}
+            placeholder="Search in table..."
+            className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {searchTerm && (
+            <button
+              onClick={clearSearch}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+            >
+              <svg
+                className="h-5 w-5"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Search Results Status */}
+      {(isSearching || showSearchMessage) && (
+        <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
+          <div className="flex items-center">
+            <svg
+              className="mr-2 h-4 w-4 animate-spin"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            Searching the database for &quot;{searchTerm}&quot;...
+          </div>
+        </div>
+      )}
+
+      {/* Search Results Count - Only show after search is complete */}
+      {searchTerm && !isSearching && !showSearchMessage && (
+        <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
+          Found {data.length} {data.length === 1 ? "result" : "results"} for "
+          {searchTerm}&quot;
+        </div>
+      )}
+
+      {/* No Results Message */}
+      {searchTerm &&
+        !isSearching &&
+        !showSearchMessage &&
+        data.length === 0 && (
+          <div className="flex h-32 items-center justify-center bg-gray-50 text-gray-500">
+            No results found for &quot;{searchTerm}&quot;
+          </div>
+        )}
+
       <div
         ref={tableContainerRef}
         className="overflow-auto"
-        style={{ height: "calc(100vh - 180px)" }} // Adjust height to fit the screen better
+        style={{ height: "calc(100vh - 230px)" }} // Adjust height to account for search bar
       >
         <table className="min-w-full table-fixed border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50">
@@ -630,12 +876,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           <button
             className="rounded bg-blue-500 px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:opacity-50"
             onClick={handleAdd100Rows}
-            disabled={isAddingRows}
+            disabled={isAddingRows || isSearching}
           >
             {isAddingRows ? "Adding..." : "Add 100 Rows"}
           </button>
         </div>
-        <div className="text-sm text-gray-500">{data.length} records</div>
+        <div className="text-sm text-gray-500">
+          {data.length} {searchTerm ? "matching" : ""} records
+        </div>
       </div>
 
       {/* Add Column Modal */}
