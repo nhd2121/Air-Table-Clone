@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { api } from "@/trpc/react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
 
 interface CreateBaseModalProps {
   isOpen: boolean;
@@ -23,35 +22,94 @@ export function CreateBaseModal({ isOpen, onClose }: CreateBaseModalProps) {
       router.push(`/base/${createdBase.id}`);
       onClose();
     },
-    onError: (error) => {
+    onError: async (error) => {
       console.error("Create base error:", error);
-      // Check if this is just a network error but the operation succeeded
-      if (
-        error.message.includes("Stream closed") ||
-        error.message.includes("network")
-      ) {
-        // Try to check if the base was actually created despite the error
-        void utils.base.getAll.invalidate().then(() => {
-          setError(
-            "Connection issue. Please refresh to see if your workspace was created.",
-          );
-        });
+
+      // Increase timeout before checking
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Common network/timeout errors that might occur despite successful creation
+      const possibleNetworkErrors = [
+        "Stream closed",
+        "network",
+        "timeout",
+        "NetworkError",
+        "Failed to fetch",
+        "Socket",
+        "ECONNRESET",
+        "AbortError",
+      ];
+
+      const isLikelyNetworkError = possibleNetworkErrors.some((errText) =>
+        error.message.toLowerCase().includes(errText.toLowerCase()),
+      );
+
+      if (isLikelyNetworkError) {
+        setError("Checking if your workspace was created despite the error...");
+
+        // Try to get all bases to see if our new one was created
+        try {
+          // Force refresh the bases list
+          await utils.base.getAll.invalidate();
+          const bases = await utils.base.getAll.fetch();
+
+          // Look for a recently created base (within the last minute)
+          const recentlyCreated = bases?.find((base) => {
+            const createdAt = new Date(base.createdAt);
+            const timeDiff = Date.now() - createdAt.getTime();
+            // If created in the last minute
+            return timeDiff < 60000;
+          });
+
+          if (recentlyCreated) {
+            // Found a recently created base, redirect to it
+            setError("");
+            router.push(`/base/${recentlyCreated.id}`);
+            onClose();
+            return;
+          }
+        } catch (fetchError) {
+          console.error("Error checking for created base:", fetchError);
+        }
+
+        setError(
+          "Connection issue. Your workspace might have been created. Please check your workspace list or try again.",
+        );
       } else {
         setError(error.message);
       }
       setIsLoading(false);
     },
-    retry: 0,
+    retry: 2, // Add retry attempts for network issues
+    retryDelay: 1000, // Wait 1 second between retries
     onSettled: () => {
       setIsLoading(false);
     },
   });
 
   const handleCreateFromScratch = () => {
+    if (isLoading) return; // Prevent multiple clicks
+
     setIsLoading(true);
-    createBase.mutate({
-      name: "Untitled Base",
-    });
+    setError("");
+
+    // Add a timeout to handle very slow connections
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setError("Operation taking longer than expected. Please wait...");
+      }
+    }, 5000);
+
+    createBase.mutate(
+      {
+        name: "Untitled Base",
+      },
+      {
+        onSettled: () => {
+          clearTimeout(timeoutId);
+        },
+      },
+    );
   };
 
   if (!isOpen) return null;
@@ -61,13 +119,26 @@ export function CreateBaseModal({ isOpen, onClose }: CreateBaseModalProps) {
       <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-800">
-            How do you want to start?
+            Create workspace
           </h2>
           <button
             onClick={onClose}
             className="rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
           >
-            <X size={20} />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
 
@@ -77,14 +148,14 @@ export function CreateBaseModal({ isOpen, onClose }: CreateBaseModalProps) {
           </div>
         )}
 
-        {/* create line */}
-        <hr className="mb-4" />
-
         <div className="flex flex-col">
           <div className="mb-6">
+            <h3 className="mb-4 text-lg font-medium text-gray-700">
+              Start from scratch
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               {/* Left card - clickable but non-functional */}
-              <div className="cursor-pointer rounded-md border border-gray-300 bg-white p-4 transition hover:shadow-md">
+              <div className="cursor-pointer rounded-md border border-gray-300 bg-white p-4 transition hover:border-gray-400 hover:shadow-md">
                 <div className="flex items-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-md bg-blue-100 text-blue-600">
                     <svg
@@ -115,7 +186,7 @@ export function CreateBaseModal({ isOpen, onClose }: CreateBaseModalProps) {
 
               {/* Right card - creates workspace */}
               <div
-                className="cursor-pointer rounded-md border border-gray-300 bg-white p-4 transition hover:shadow-md"
+                className="cursor-pointer rounded-md border border-gray-300 bg-white p-4 transition hover:border-green-500 hover:shadow-md"
                 onClick={handleCreateFromScratch}
               >
                 <div className="flex items-center">

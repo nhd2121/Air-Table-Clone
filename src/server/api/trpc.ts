@@ -1,51 +1,55 @@
 /**
- * YOU PROBABLY DON'T NEED TO EDIT THIS FILE, UNLESS:
- * 1. You want to modify request context (see Part 1).
- * 2. You want to create a new middleware or type of procedure (see Part 3).
- *
- * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
- * need to use are documented accordingly near the end.
+ * Updated tRPC context with optimizations for production environments
  */
-
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { auth } from "@/server/auth";
-import { db } from "@/server/db";
+import { db, withRetry } from "@/server/db";
 
 /**
- * 1. CONTEXT
- *
- * This section defines the "contexts" that are available in the backend API.
- *
- * These allow you to access things when processing a request, like the database, the session, etc.
- *
- * This helper generates the "internals" for a tRPC context. The API handler and RSC clients each
- * wrap this and provides the required context.
- *
- * @see https://trpc.io/docs/server/context
+ * Context for tRPC requests with optimizations
+ * Adds request timeouts and better error handling
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
-  const session = await auth();
+  // Get session with retry for production environments
+  let session;
+  if (process.env.NODE_ENV === "production") {
+    session = await withRetry(() => auth(), 2, 500);
+  } else {
+    session = await auth();
+  }
+
+  // Create a custom headers object that we can modify
+  const headers = new Headers(opts.headers);
+
+  // Set a default request timeout
+  if (!headers.has("request-timeout")) {
+    headers.set("request-timeout", "15000"); // 15 seconds default timeout
+  }
 
   return {
     db,
     session,
-    ...opts,
+    headers,
   };
 };
 
 /**
- * 2. INITIALIZATION
- *
- * This is where the tRPC API is initialized, connecting the context and transformer. We also parse
- * ZodErrors so that you get typesafety on the frontend if your procedure fails due to validation
- * errors on the backend.
+ * Initialize tRPC with optimized settings
  */
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,
   errorFormatter({ shape, error }) {
+    // Log critical errors in production for monitoring
+    if (
+      process.env.NODE_ENV === "production" &&
+      (error.code === "INTERNAL_SERVER_ERROR" || error.code === "TIMEOUT")
+    ) {
+      console.error(`[TRPC ERROR] ${error.code}: ${error.message}`, error);
+    }
+
     return {
       ...shape,
       data: {
@@ -58,71 +62,94 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
 });
 
 /**
- * Create a server-side caller.
- *
- * @see https://trpc.io/docs/server/server-side-calls
+ * Create a server-side caller
  */
 export const createCallerFactory = t.createCallerFactory;
 
 /**
- * 3. ROUTER & PROCEDURE (THE IMPORTANT BIT)
- *
- * These are the pieces you use to build your tRPC API. You should import these a lot in the
- * "/src/server/api/routers" directory.
- */
-
-/**
- * This is how you create new routers and sub-routers in your tRPC API.
- *
- * @see https://trpc.io/docs/router
+ * Create new routers
  */
 export const createTRPCRouter = t.router;
 
 /**
- * Middleware for timing procedure execution and adding an artificial delay in development.
- *
- * You can remove this if you don't like it, but it can help catch unwanted waterfalls by simulating
- * network latency that would occur in production but not in local development.
+ * Middleware for timing with production optimizations
  */
-const timingMiddleware = t.middleware(async ({ next, path }) => {
+const timingMiddleware = t.middleware(async ({ path, next, ctx }) => {
   const start = Date.now();
 
-  if (t._config.isDev) {
-    // artificial delay in dev
-    const waitMs = Math.floor(Math.random() * 400) + 100;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  // Get request timeout from headers or use default
+  const timeoutStr = ctx.headers.get("request-timeout");
+  const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 15000;
+
+  try {
+    // Create a promise that resolves after the timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new TRPCError({
+            code: "TIMEOUT",
+            message: `Request timed out after ${timeout}ms`,
+          }),
+        );
+      }, timeout);
+    });
+
+    // Race the operation against the timeout
+    const result = await Promise.race([next(), timeoutPromise]);
+
+    const end = Date.now();
+    const duration = end - start;
+
+    // Only log slow operations in production to reduce log volume
+    if (process.env.NODE_ENV === "production" && duration > 1000) {
+      console.warn(
+        `[TRPC] Slow operation detected: ${path} took ${duration}ms`,
+      );
+    } else if (process.env.NODE_ENV !== "production") {
+      console.log(`[TRPC] ${path} took ${duration}ms to execute`);
+    }
+
+    return result;
+  } catch (error) {
+    // Enhance error with timing information
+    const end = Date.now();
+    const duration = end - start;
+
+    if (error instanceof TRPCError) {
+      console.error(
+        `[TRPC] Error in ${path} after ${duration}ms: ${error.code}`,
+      );
+      throw error;
+    }
+
+    console.error(
+      `[TRPC] Unknown error in ${path} after ${duration}ms:`,
+      error,
+    );
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "An unexpected error occurred",
+      cause: error,
+    });
   }
-
-  const result = await next();
-
-  const end = Date.now();
-  console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
-
-  return result;
 });
 
 /**
- * Public (unauthenticated) procedure
- *
- * This is the base piece you use to build new queries and mutations on your tRPC API. It does not
- * guarantee that a user querying is authorized, but you can still access user session data if they
- * are logged in.
+ * Public procedure with improved timing middleware
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
 
 /**
- * Protected (authenticated) procedure
- *
- * If you want a query or mutation to ONLY be accessible to logged in users, use this. It verifies
- * the session is valid and guarantees `ctx.session.user` is not null.
- *
- * @see https://trpc.io/docs/procedures
+ * Protected procedure with better error handling
  */
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(({ ctx, next }) => {
     if (!ctx.session || !ctx.session.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "You must be logged in to perform this action",
+      });
     }
     return next({
       ctx: {
