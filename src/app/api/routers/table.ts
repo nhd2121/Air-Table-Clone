@@ -672,4 +672,159 @@ export const tableRouter = createTRPCRouter({
         });
       }
     }),
+
+  addMultipleRows: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string(),
+        count: z.number().int().min(1).max(100).default(100),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await ctx.db.$transaction(
+          async (tx) => {
+            // Verify the table belongs to a base owned by the user
+            const table = await tx.table.findFirst({
+              where: {
+                id: input.tableId,
+                base: {
+                  ownerId: ctx.session.user.id,
+                },
+              },
+              include: {
+                columns: true,
+              },
+            });
+
+            if (!table) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Table not found or you don't have access",
+              });
+            }
+
+            // Pre-generate fake data for each column type for all rows
+            const rowsData = [];
+
+            for (let i = 0; i < input.count; i++) {
+              const fakerData = {
+                name: faker.person.fullName(),
+                email: faker.internet.email(),
+                phone: faker.phone.number(),
+                notes: faker.lorem.sentence(),
+                number: faker.number.int({ min: 1, max: 1000 }).toString(),
+                text: faker.lorem.words(3),
+              };
+
+              rowsData.push(fakerData);
+            }
+
+            // Batch create all rows
+            const createdRows = [];
+
+            // Process in smaller batches of 10 to avoid overwhelming the DB
+            const batchSize = 10;
+            const batches = Math.ceil(input.count / batchSize);
+
+            for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
+              const startIdx = batchIndex * batchSize;
+              const endIdx = Math.min(startIdx + batchSize, input.count);
+              const batchPromises = [];
+
+              for (let i = startIdx; i < endIdx; i++) {
+                // Create the row
+                const rowPromise = tx.row
+                  .create({
+                    data: {
+                      table: { connect: { id: input.tableId } },
+                    },
+                  })
+                  .then(async (row) => {
+                    // Get the faker data for this row
+                    const fakerData = rowsData[i];
+
+                    // Create cells for all columns in parallel
+                    const cellPromises = table.columns.map((column) => {
+                      let value = "";
+
+                      // Generate appropriate data based on column name or type
+                      if (
+                        column.name === "Name" ||
+                        column.name.toLowerCase().includes("name")
+                      ) {
+                        value = fakerData.name;
+                      } else if (
+                        column.name === "Email" ||
+                        column.name.toLowerCase().includes("email")
+                      ) {
+                        value = fakerData.email;
+                      } else if (
+                        column.name === "Phone" ||
+                        column.name.toLowerCase().includes("phone")
+                      ) {
+                        value = fakerData.phone;
+                      } else if (
+                        column.name === "Notes" ||
+                        column.name.toLowerCase().includes("note")
+                      ) {
+                        value = fakerData.notes;
+                      } else if (column.type === "NUMBER") {
+                        value = fakerData.number;
+                      } else {
+                        value = fakerData.text;
+                      }
+
+                      return tx.cell.create({
+                        data: {
+                          columnId: column.id,
+                          rowId: row.id,
+                          value,
+                        },
+                      });
+                    });
+
+                    await Promise.all(cellPromises);
+
+                    // Get the complete row with cells
+                    const completeRow = await tx.row.findUnique({
+                      where: { id: row.id },
+                      include: {
+                        cells: true,
+                      },
+                    });
+
+                    createdRows.push(completeRow);
+                    return completeRow;
+                  });
+
+                batchPromises.push(rowPromise);
+              }
+
+              // Wait for each batch to complete before moving to the next
+              await Promise.all(batchPromises);
+            }
+
+            return createdRows;
+          },
+          {
+            timeout: 60000, // Increase timeout for batch operations
+            maxWait: 5000,
+            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+          },
+        );
+      } catch (error) {
+        console.error("Error adding multiple rows:", error);
+
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to add rows",
+          cause: error,
+        });
+      }
+    }),
 });

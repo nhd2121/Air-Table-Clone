@@ -33,8 +33,7 @@ const createPrismaClient = () => {
 
   // Add connection event handlers in production
   if (env.NODE_ENV === "production") {
-    client.$on("query", (e) => {
-      // Only log slow queries (over 1000ms)
+    client.$on("query", (e: { duration: number; query: string }) => {
       if (e.duration >= 1000) {
         console.warn(`Slow query detected (${e.duration}ms): ${e.query}`);
       }

@@ -301,6 +301,46 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Update cell mutation
   const updateCell = api.table.updateCell.useMutation();
 
+  const addMultipleRows = api.table.addMultipleRows.useMutation({
+    onSuccess: (response) => {
+      if (response && tableData) {
+        // Convert the server response to TableRow format
+        const newRows = response.map((newRow: any) => {
+          const newRowObj: TableRow = { id: newRow.id };
+          newRow.cells.forEach((cell: any) => {
+            const column = tableData.columns.find(
+              (col) => col.id === cell.columnId,
+            );
+            if (column) {
+              newRowObj[column.id] = cell.value ?? "";
+            }
+          });
+          return newRowObj;
+        });
+
+        // Replace all temp rows with real rows
+        setData((prev) => {
+          // Filter out temporary rows
+          const nonTempRows = prev.filter((row) => !row.id.startsWith("temp-"));
+          // Add the new real rows
+          return [...nonTempRows, ...newRows];
+        });
+      }
+    },
+    onError: (error) => {
+      console.error("Error adding 100 rows:", error);
+
+      // Clean up temporary rows on error
+      setData((prev) => prev.filter((row) => !row.id.startsWith("temp-")));
+
+      // Show error to user
+      alert("Failed to add rows. Please try again.");
+    },
+    onSettled: () => {
+      setIsAddingRows(false);
+    },
+  });
+
   // Handle adding 100 rows
   const handleAdd100Rows = async () => {
     if (isAddingRows || !tableData) return;
@@ -308,9 +348,9 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     setIsAddingRows(true);
 
     try {
-      // Create 100 rows sequentially to avoid overwhelming the database
+      // Create temporary placeholder rows for UI feedback
+      const tempRows: TableRow[] = [];
       for (let i = 0; i < 100; i++) {
-        // Create a temporary optimistic row for the UI
         const tempRowId = `temp-${Date.now()}-${i}`;
         const tempRow: TableRow = { id: tempRowId };
 
@@ -319,39 +359,22 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           tempRow[col.id] = "";
         });
 
-        // Add to UI
-        setData((prev) => [...prev, tempRow]);
-
-        // Create the actual row in the database
-        const newRow = await addRow.mutateAsync({ tableId });
-
-        // Replace temp row with actual row
-        if (newRow) {
-          // Convert cells to row object
-          const newRowObj: TableRow = { id: newRow.id };
-          newRow.cells.forEach((cell) => {
-            const column = tableData.columns.find(
-              (col) => col.id === cell.columnId,
-            );
-            if (column) {
-              newRowObj[column.id] = cell.value ?? "";
-            }
-          });
-
-          // Update the data by replacing the temp row
-          setData((prev) =>
-            prev.map((row) => (row.id === tempRowId ? newRowObj : row)),
-          );
-        }
-
-        // Add a small delay between batches
-        if (i % 10 === 0 && i > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
+        tempRows.push(tempRow);
       }
+
+      // Add all temp rows to UI immediately for better user experience
+      setData((prev) => [...prev, ...tempRows]);
+
+      // Call the mutation with the correct syntax
+      addMultipleRows.mutate({
+        tableId,
+        count: 100,
+      });
     } catch (error) {
-      console.error("Error adding 100 rows:", error);
-    } finally {
+      console.error("Error in handleAdd100Rows:", error);
+
+      // Clean up temporary rows on error
+      setData((prev) => prev.filter((row) => !row.id.startsWith("temp-")));
       setIsAddingRows(false);
     }
   };
