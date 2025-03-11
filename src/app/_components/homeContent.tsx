@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Sidebar } from "./mainPageSideBar";
@@ -8,7 +8,7 @@ import type { Session } from "next-auth";
 import { api } from "@/trpc/react";
 import NavBar from "./navBar";
 import Link from "next/link";
-import { ChevronDown, LayoutGrid, Menu } from "lucide-react";
+import { ChevronDown, LayoutGrid, Menu, X } from "lucide-react";
 
 interface HomeContentProps {
   initialSession: Session | null;
@@ -18,6 +18,44 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
   const { status } = useSession();
   const router = useRouter();
   const { data: bases, isLoading } = api.base.getAll.useQuery();
+
+  // State for delete confirmation modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [baseToDelete, setBaseToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const utils = api.useUtils();
+
+  // Mutation for deleting a base
+  const deleteBase = api.base.delete.useMutation({
+    onSuccess: () => {
+      // Invalidate the query to refresh the data
+      void utils.base.getAll.invalidate();
+      setDeleteModalOpen(false);
+      setBaseToDelete(null);
+    },
+  });
+
+  // Function to handle delete button click
+  const handleDeleteClick = (
+    e: React.MouseEvent,
+    baseId: string,
+    baseName: string,
+  ) => {
+    e.preventDefault(); // Prevent navigation to the base
+    e.stopPropagation(); // Prevent event bubbling
+    setBaseToDelete({ id: baseId, name: baseName });
+    setDeleteModalOpen(true);
+  };
+
+  // Function to confirm deletion
+  const confirmDelete = () => {
+    if (baseToDelete) {
+      deleteBase.mutate({ id: baseToDelete.id });
+    }
+  };
 
   // Redirect to welcome page if not authenticated
   useEffect(() => {
@@ -110,8 +148,16 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
                       <Link
                         key={base.id}
                         href={`/base/${base.id}`}
-                        className="flex cursor-pointer items-start rounded-lg border border-gray-200 p-4 transition-shadow hover:shadow-md"
+                        className="relative flex cursor-pointer items-start rounded-lg border border-gray-200 p-4 transition-shadow hover:shadow-md"
                       >
+                        <button
+                          className="absolute right-2 top-2 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          onClick={(e) =>
+                            handleDeleteClick(e, base.id, base.name)
+                          }
+                        >
+                          <X size={16} />
+                        </button>
                         <div className="mr-3 flex-shrink-0">
                           <div
                             className={`h-14 w-14 ${bgColor} flex items-center justify-center rounded-lg text-2xl font-medium text-white`}
@@ -139,6 +185,37 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && baseToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-xl font-medium text-gray-800">
+              Delete Workspace
+            </h3>
+            <p className="mb-6 text-gray-600">
+              Are you sure you want to delete the workspace &quot;
+              {baseToDelete.name}
+              &quot;? This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+                disabled={deleteBase.isPending}
+              >
+                {deleteBase.isPending ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
