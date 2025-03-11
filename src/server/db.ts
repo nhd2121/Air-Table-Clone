@@ -2,39 +2,16 @@ import { PrismaClient } from "@prisma/client";
 import { env } from "@/env";
 
 /**
- * Connection pool configuration based on environment
+ * Connection configuration based on environment
  */
 const connectionConfig = {
   // Development - simpler settings
   development: {
     log: ["query", "error", "warn"],
-    connectionLimit: 5,
-    queryTimeout: 10000, // 10 seconds
   },
   // Production - optimized settings
   production: {
     log: ["error"],
-    connectionLimit: 10,
-    queryTimeout: 20000, // 20 seconds
-    // Connection pooling settings
-    connection: {
-      maxIdleTime: 300000, // 5 minutes (in milliseconds)
-      maxUses: 100, // Maximum number of uses for a single connection before it's replaced
-    },
-    pool: {
-      // Minimum number of connections to keep open
-      min: 2,
-      // Maximum number of concurrent connections
-      max: 10,
-      // Time to wait before retrying to acquire a connection (milliseconds)
-      backoff: {
-        min: 50, // Start with 50ms delay
-        max: 1000, // Max 1s delay
-        factor: 2, // Exponential backoff
-      },
-      // Keep connections alive
-      keepalive: 60000, // 1 minute keepalive
-    },
   },
 };
 
@@ -50,14 +27,8 @@ const config =
 const createPrismaClient = () => {
   const client = new PrismaClient({
     log: config.log,
-    // Add connection timeout
-    datasources: {
-      db: {
-        url: env.DATABASE_URL,
-      },
-    },
-    // Configure connection pool for better performance
-    connectionLimit: config.connectionLimit,
+    // Prisma Client doesn't support connectionLimit as a direct option
+    // We can only configure what's supported by the client
   });
 
   // Add connection event handlers in production
