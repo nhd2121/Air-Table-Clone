@@ -2,9 +2,16 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { api } from "@/trpc/react";
 import type { Table } from "@/type/db";
+import {
+  ChevronDown,
+  Plus,
+  Share,
+  History,
+  ArrowLeftCircle,
+} from "lucide-react";
 
 interface BaseNavbarProps {
   baseName: string;
@@ -29,8 +36,26 @@ export function BaseNavbar({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: session } = useSession();
+  const [isOpen, setIsOpen] = useState(false);
 
   const utils = api.useUtils();
+
+  // Get initials from user name for avatar
+  const getUserInitials = () => {
+    if (!session?.user?.name) return "?";
+
+    return session.user.name
+      .split(" ")
+      .map((name) => name[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: "/" });
+  };
 
   const updateBase = api.base.update.useMutation({
     onSuccess: () => {
@@ -76,6 +101,21 @@ export function BaseNavbar({
   const handleNameClick = () => {
     setIsEditing(true);
   };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest(".user-dropdown") && isOpen) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
@@ -140,77 +180,143 @@ export function BaseNavbar({
     });
   };
 
+  // Calculate remaining trial days (for demo purposes)
+  const trialDaysLeft = 12;
+
   return (
-    <>
+    <div className="flex flex-col">
       {/* Top Navbar */}
-      <nav className="w-full bg-green-600 text-white">
-        <div className="flex h-16 items-center justify-between px-4">
-          <div className="mr-4 flex items-center">
-            <div className="mr-4 flex items-center text-base font-medium">
-              <Link href="/" className="mr-2 text-white hover:text-white/90">
-                Home /
-              </Link>
-              {isEditing ? (
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={name}
-                  onChange={handleNameChange}
-                  onBlur={handleNameBlur}
-                  onKeyDown={handleKeyDown}
-                  className="bg-green-700 px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-white/50"
-                />
-              ) : (
+      <div className="flex h-16 items-center justify-between bg-teal-600 px-4 text-white">
+        <div className="flex items-center">
+          {/* Logo and Base Name */}
+          <div className="mr-6 flex items-center">
+            <Link href="/" className="pr-4">
+              <ArrowLeftCircle />
+            </Link>
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={name}
+                onChange={handleNameChange}
+                onBlur={handleNameBlur}
+                onKeyDown={handleKeyDown}
+                className="rounded border-none bg-teal-700 px-2 py-1 text-lg font-medium text-white focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            ) : (
+              <div className="flex items-center">
                 <span
                   onClick={handleNameClick}
-                  className="cursor-pointer hover:text-white/90"
+                  className="cursor-pointer text-lg font-medium hover:text-white/90"
                 >
                   {name || "Untitled Base"}
                 </span>
+              </div>
+            )}
+          </div>
+
+          {/* Main navigation */}
+          <nav className="hidden md:flex">
+            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+              Data
+            </button>
+            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+              Automations
+            </button>
+            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+              Interfaces
+            </button>
+            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+              Forms
+            </button>
+          </nav>
+        </div>
+
+        {/* Right side controls */}
+        <div className="flex items-center space-x-3">
+          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-700 hover:bg-teal-800">
+            <History size={18} />
+          </button>
+
+          <div className="rounded bg-teal-700 px-3 py-1 text-sm">
+            Trial: {trialDaysLeft} days left
+          </div>
+
+          <button className="flex items-center rounded-full bg-white px-3 py-1 text-sm font-medium text-teal-700 hover:bg-white/90">
+            <Share size={16} className="mr-1" />
+            Share
+          </button>
+
+          {/* User avatar */}
+          <div className="flex items-center gap-4">
+            {/* User Profile */}
+            <div className="user-dropdown relative">
+              <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center rounded-full p-1"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-pink-500 text-sm font-medium text-white">
+                  {getUserInitials()}
+                </div>
+              </button>
+
+              {isOpen && (
+                <div className="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5">
+                  <div className="border-b border-gray-100 px-4 py-3">
+                    <p className="text-sm font-medium text-gray-900">
+                      {session?.user?.name}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700"
+                  >
+                    Sign out
+                  </button>
+                </div>
               )}
             </div>
           </div>
-
-          <div className="flex items-center">
-            <Link
-              href={session ? "/api/auth/signout" : "/api/auth/signin"}
-              className="rounded-full bg-white/10 px-4 py-2 font-semibold no-underline transition hover:bg-white/20"
-            >
-              {session ? "Sign out" : "Sign in"}
-            </Link>
-          </div>
         </div>
-      </nav>
+      </div>
 
-      {/* Secondary Navbar */}
-      <div className="relative flex items-end border-b border-gray-200 bg-green-700 px-4">
-        {/* Table Tabs */}
+      {/* Tab bar */}
+      <div className="flex h-10 items-center bg-teal-700 text-white">
         <div className="flex overflow-x-auto">
           {tables.map((table) => (
             <div
               key={table.id}
-              className={`mb-[-1px] cursor-pointer items-center border-l border-r border-t border-gray-300 px-3 py-2 font-medium ${
+              className={`flex min-w-[100px] cursor-pointer items-center ${
                 activeTableId === table.id
-                  ? "bg-white"
-                  : "bg-gray-100 text-gray-700"
-              }`}
+                  ? "bg-white text-teal-800"
+                  : "bg-teal-700 text-white hover:bg-teal-600"
+              } px-3 py-2`}
               onClick={() => onTableSelect && onTableSelect(table.id)}
             >
-              {table.name}
+              <span className="mr-1 truncate">{table.name}</span>
+              <ChevronDown size={14} />
             </div>
           ))}
+
+          <button
+            className="flex items-center bg-teal-700 px-3 py-2 text-white hover:bg-teal-600"
+            onClick={handleAddTable}
+          >
+            <Plus size={16} className="mr-1" />
+            <span>{isCreatingTable ? "Creating..." : "Add or import"}</span>
+          </button>
         </div>
 
-        {/* Add Table Button */}
-        <div
-          className={`ml-3 flex cursor-pointer items-center rounded px-3 py-1.5 text-white ${
-            isCreatingTable ? "opacity-50" : "hover:bg-green-600"
-          }`}
-          onClick={handleAddTable}
-        >
-          {isCreatingTable ? "Creating..." : "+ Add Table"}
+        <div className="ml-auto mr-4 flex">
+          <button className="px-3 py-1 text-sm hover:bg-teal-600">
+            Extensions
+          </button>
+          <button className="flex items-center px-3 py-1 text-sm hover:bg-teal-600">
+            Tools
+            <ChevronDown size={14} className="ml-1" />
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
