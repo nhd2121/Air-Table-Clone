@@ -9,6 +9,14 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
+import {
+  Plus,
+  Search,
+  X,
+  ChevronDown,
+  MoreHorizontal,
+  Filter,
+} from "lucide-react";
 
 // Define the data structure for each row
 interface TableRow {
@@ -180,11 +188,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           if (shouldUseSearch) {
             utils.table.searchTableData.setData(
               { tableId, searchTerm: searchTerm.trim() },
-              (oldData) => {
+              (oldData: { rows: TableRow[] } | undefined) => {
                 if (!oldData) return oldData;
 
                 // Update just the specific cell in the cached data
-                const updatedRows = oldData.rows.map((row) => {
+                const updatedRows = oldData.rows.map((row: TableRow) => {
                   if (row.id === rowId) {
                     return {
                       ...row,
@@ -275,7 +283,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         if (shouldUseSearch) {
           utils.table.searchTableData.setData(
             { tableId, searchTerm: searchTerm.trim() },
-            (oldData) => {
+            (
+              oldData:
+                | { columns: { id: string; name: string; type: string }[] }
+                | undefined,
+            ) => {
               if (!oldData) return oldData;
 
               return {
@@ -379,6 +391,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     }
   };
 
+  const handleAddRow = () => {
+    if (!tableData) return;
+
+    addRow.mutate({
+      tableId,
+    });
+  };
+
   // Handle adding a new column
   const handleAddColumn = (e: React.FormEvent): void => {
     e.preventDefault();
@@ -457,21 +477,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           className="flex cursor-pointer items-center"
           onClick={() => setActiveDropdown(columnId)}
         >
-          <span className="mr-1">{label}</span>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
+          <span className="mr-1 font-medium">{label}</span>
+          <ChevronDown size={14} className="ml-1 text-gray-500" />
         </div>
 
         {activeDropdown === columnId && (
@@ -518,15 +525,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       columnHelper.display({
         id: "select",
         header: () => (
-          <input type="checkbox" className="rounded text-blue-500" />
-        ),
-        cell: ({ row }) => (
-          <div className="flex items-center">
-            <input type="checkbox" className="mr-2 rounded text-blue-500" />
-            <span>{row.index + 1}</span>
+          <div className="flex items-center pl-2">
+            <input type="checkbox" className="h-4 w-4 rounded text-blue-500" />
           </div>
         ),
-        size: 60,
+        cell: ({ row }) => (
+          <div className="flex items-center pl-2">
+            <input type="checkbox" className="h-4 w-4 rounded text-blue-500" />
+          </div>
+        ),
+        size: 40,
       }),
     ];
 
@@ -595,7 +603,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                     setEditingCell(null);
                   }}
                   autoFocus
-                  className="w-full p-1 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 focus:border-transparent focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               );
             }
@@ -610,41 +618,12 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               </div>
             );
           },
-          size: 150, // Add a default size
+          size: 200, // Match the design with larger column widths
         }),
       );
     });
 
-    // Add column button
-    columns.push(
-      columnHelper.display({
-        id: "addColumn",
-        header: () => (
-          <button
-            className="text-gray-500 hover:text-gray-700"
-            onClick={() => setShowAddColumnModal(true)}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </button>
-        ),
-        cell: () => null,
-        size: 40,
-      }),
-    );
-
+    // Add column button - removed from columns and added to toolbar instead
     return columns;
   };
 
@@ -659,8 +638,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const rowVirtualizer = useVirtualizer({
     count: data.length,
     getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 53, // Estimated row height
-    overscan: 5,
+    estimateSize: () => 45, // Slightly smaller row height to match the design
+    overscan: 10,
   });
 
   // Close dropdown when clicking outside
@@ -700,7 +679,10 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   if (isLoading && !isSearching) {
     return (
       <div className="flex h-64 items-center justify-center">
-        Loading table data...
+        <div className="flex flex-col items-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-t-2 border-blue-500"></div>
+          <p className="mt-4 text-gray-600">Loading table data...</p>
+        </div>
       </div>
     );
   }
@@ -725,52 +707,62 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       : 0;
 
   return (
-    <div className="flex h-full flex-col border border-gray-200">
-      {/* Search Bar */}
-      <div className="flex items-center border-b border-gray-200 bg-white p-2">
-        <div className="relative flex-grow">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <svg
-              className="h-5 w-5 text-gray-400"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchTerm}
-            onChange={handleSearchChange}
-            placeholder="Search in table..."
-            className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          {searchTerm && (
+    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+      {/* Toolbar */}
+      <div className="border-b border-gray-200 bg-white p-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
             <button
-              onClick={clearSearch}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+              onClick={handleAddRow}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
             >
-              <svg
-                className="h-5 w-5"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
+              <Plus size={16} className="mr-1 text-gray-500" />
+              Add record
             </button>
-          )}
+
+            <button
+              onClick={() => setShowAddColumnModal(true)}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <Plus size={16} className="mr-1 text-gray-500" />
+              Add field
+            </button>
+
+            <div className="h-6 border-l border-gray-300"></div>
+
+            <button className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+              <Filter size={16} className="mr-1 text-gray-500" />
+              Filter
+            </button>
+
+            <button className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+              <MoreHorizontal size={16} className="mr-1 text-gray-500" />
+              More
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative flex w-64 items-center">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <Search size={16} className="text-gray-400" />
+            </div>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              placeholder="Search in grid..."
+              className="block w-full rounded-md border border-gray-300 py-1.5 pl-10 pr-10 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {searchTerm && (
+              <button
+                onClick={clearSearch}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -778,27 +770,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       {(isSearching || showSearchMessage) && (
         <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
           <div className="flex items-center">
-            <svg
-              className="mr-2 h-4 w-4 animate-spin"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              ></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            Searching the database for &quot;{searchTerm}&quot;...
+            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            Searching for &quot;{searchTerm}&quot;...
           </div>
         </div>
       )}
@@ -807,8 +780,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       {searchTerm && !isSearching && !showSearchMessage && (
         <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
           Found {data.length} {data.length === 1 ? "result" : "results"} for
-          &quot;
-          {searchTerm}&quot;
+          &quot;{searchTerm}&quot;
         </div>
       )}
 
@@ -822,20 +794,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           </div>
         )}
 
-      <div
-        ref={tableContainerRef}
-        className="overflow-auto"
-        style={{ height: "calc(100vh - 230px)" }} // Adjust height to account for search bar
-      >
-        <table className="min-w-full table-fixed border-collapse">
+      <div ref={tableContainerRef} className="flex-1 overflow-auto">
+        <table className="w-full table-fixed border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b">
+              <tr key={headerGroup.id} className="border-b border-gray-200">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
                     style={{ width: header.column.getSize() }}
-                    className="relative border-l px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    className="border-r border-gray-200 px-2 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                   >
                     {header.isPlaceholder
                       ? null
@@ -845,6 +813,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                         )}
                   </th>
                 ))}
+                {/* Add an empty column as a spacer at the end */}
+                <th className="w-10 border-none"></th>
               </tr>
             ))}
           </thead>
@@ -853,7 +823,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               <tr>
                 <td
                   style={{ height: `${paddingTop}px` }}
-                  colSpan={table.getAllColumns().length}
+                  colSpan={table.getAllColumns().length + 1}
                 ></td>
               </tr>
             )}
@@ -862,13 +832,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               if (!row) return null;
 
               return (
-                <tr key={row.id} className="border-b hover:bg-gray-50">
+                <tr
+                  key={row.id}
+                  className="border-b border-gray-200 hover:bg-blue-50"
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className={`border-r px-4 py-3 text-sm ${
-                        cell.column.id === "select" ? "bg-gray-50" : ""
-                      }`}
+                      className="border-r border-gray-200 px-0 py-0 text-sm text-gray-800"
                     >
                       {flexRender(
                         cell.column.columnDef.cell,
@@ -876,6 +847,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                       )}
                     </td>
                   ))}
+                  {/* Add an empty cell at the end */}
+                  <td className="w-10 border-none"></td>
                 </tr>
               );
             })}
@@ -883,7 +856,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               <tr>
                 <td
                   style={{ height: `${paddingBottom}px` }}
-                  colSpan={table.getAllColumns().length}
+                  colSpan={table.getAllColumns().length + 1}
                 ></td>
               </tr>
             )}
@@ -891,21 +864,25 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         </table>
       </div>
 
-      {/* Footer with Add 100 Rows button */}
-      <div className="flex items-center justify-between border-t bg-white px-4 py-2">
-        <div className="flex items-center">
-          <button
-            className="rounded bg-blue-500 px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:opacity-50"
-            onClick={handleAdd100Rows}
-            disabled={isAddingRows || isSearching}
-          >
-            {isAddingRows ? "Adding..." : "Add 100 Rows"}
-          </button>
-        </div>
-        <div className="text-sm text-gray-500">
-          {data.length} {searchTerm ? "matching" : ""} records
-        </div>
+      {/* Footer with row count */}
+      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm">
+        {data.length} {searchTerm ? "matching " : ""}record
+        {data.length !== 1 ? "s" : ""}
       </div>
+
+      {/* Add Row Button - add this fixed button */}
+      <button
+        onClick={handleAdd100Rows}
+        className="absolute bottom-24 right-8 flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700"
+        disabled={isAddingRows || isSearching}
+        title="Add 100 Rows"
+      >
+        {isAddingRows ? (
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+        ) : (
+          <Plus size={20} />
+        )}
+      </button>
 
       {/* Add Column Modal */}
       {showAddColumnModal && (
@@ -914,52 +891,79 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             ref={modalRef}
             className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
           >
-            <h3 className="mb-4 text-xl font-medium">Add New Column</h3>
+            <h3 className="mb-4 text-xl font-medium">Add New Field</h3>
             <form onSubmit={handleAddColumn}>
               <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium">
-                  Column Name
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Field Name
                 </label>
                 <input
                   type="text"
                   value={newColumnName}
                   onChange={(e) => setNewColumnName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="Enter column name"
+                  className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Enter field name"
                   required
+                  autoFocus
                 />
               </div>
 
               <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium">
-                  Column Type
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Field Type
                 </label>
-                <select
-                  value={newColumnType}
-                  onChange={(e) =>
-                    setNewColumnType(e.target.value as ColumnType)
-                  }
-                  className="w-full rounded-md border border-gray-300 p-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="TEXT">Text</option>
-                  <option value="NUMBER">Number</option>
-                </select>
+                <div className="flex space-x-4">
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="type-text"
+                      name="fieldType"
+                      value="TEXT"
+                      checked={newColumnType === "TEXT"}
+                      onChange={() => setNewColumnType("TEXT")}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <label
+                      htmlFor="type-text"
+                      className="ml-2 text-sm text-gray-700"
+                    >
+                      Text
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="type-number"
+                      name="fieldType"
+                      value="NUMBER"
+                      checked={newColumnType === "NUMBER"}
+                      onChange={() => setNewColumnType("NUMBER")}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <label
+                      htmlFor="type-number"
+                      className="ml-2 text-sm text-gray-700"
+                    >
+                      Number
+                    </label>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end space-x-3">
                 <button
                   type="button"
                   onClick={() => setShowAddColumnModal(false)}
-                  className="mr-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
                   disabled={addColumn.isPending}
                 >
-                  {addColumn.isPending ? "Adding..." : "Add Column"}
+                  {addColumn.isPending ? "Adding..." : "Add Field"}
                 </button>
               </div>
             </form>
