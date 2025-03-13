@@ -414,6 +414,19 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     });
   };
 
+  // Add Column Button Component for the column header
+  const AddColumnHeader: React.FC = () => {
+    return (
+      <div
+        className="flex h-full w-10 cursor-pointer items-center justify-center text-gray-400 hover:text-gray-600"
+        onClick={() => setShowAddColumnModal(true)}
+        title="Add field"
+      >
+        <Plus size={18} />
+      </div>
+    );
+  };
+
   // Handle column type change
   const changeColumnType = (columnId: string, type: ColumnType): void => {
     setColumnTypes((prevTypes) => ({
@@ -623,7 +636,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       );
     });
 
-    // Add column button - removed from columns and added to toolbar instead
+    // Add the "Add Column" button as the last column
+    columns.push(
+      columnHelper.display({
+        id: "add-column",
+        header: () => <AddColumnHeader />,
+        cell: () => null, // Empty cells for this column
+        size: 40,
+      }),
+    );
+
     return columns;
   };
 
@@ -712,26 +734,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       <div className="border-b border-gray-200 bg-white p-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {/* Updated Add Record button to match the design */}
-            <button
-              onClick={handleAddRow}
-              className="flex h-8 items-center rounded bg-blue-100 px-3 text-sm font-medium text-blue-600 hover:bg-blue-200"
-            >
-              <Plus size={16} className="mr-1" />
-              Add record
-            </button>
-
-            {/* Updated Add Field button to match the design */}
-            <button
-              onClick={() => setShowAddColumnModal(true)}
-              className="flex h-8 items-center rounded bg-blue-100 px-3 text-sm font-medium text-blue-600 hover:bg-blue-200"
-            >
-              <Plus size={16} className="mr-1" />
-              Add field
-            </button>
-
-            <div className="h-6 border-l border-gray-300"></div>
-
             <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
               <Filter size={16} className="mr-1 text-gray-500" />
               Filter
@@ -863,6 +865,25 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                 ></td>
               </tr>
             )}
+
+            {/* Add a row at the bottom with the "+" button to add new records */}
+            <tr className="border-b border-gray-200 hover:bg-gray-50">
+              <td className="border-r border-gray-200 p-0">
+                <button
+                  onClick={handleAddRow}
+                  className="flex h-full w-full items-center justify-center py-3 text-gray-400 hover:text-gray-600"
+                  title="Add new record"
+                >
+                  <Plus size={18} />
+                </button>
+              </td>
+              {/* Empty cells for the rest of the row */}
+              {Array.from({ length: table.getAllColumns().length - 1 }).map(
+                (_, i) => (
+                  <td key={i} className="border-r border-gray-200"></td>
+                ),
+              )}
+            </tr>
           </tbody>
         </table>
       </div>
