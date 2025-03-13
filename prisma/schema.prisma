@@ -43,19 +43,20 @@ model Base {
 }
 
 model Table {
-    id          String   @id @default(cuid())
-    name        String
-    description String?
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-    // Relations
-    base   Base   @relation(fields: [baseId], references: [id], onDelete: Cascade)
-    baseId String
-    columns Column[]
-    rows    Row[]
+  // Relations
+  base    Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  baseId  String
+  columns Column[]
+  rows    Row[]
+  views   View[]   // Add this line to establish the relation with View model
 
-    @@index([baseId])
+  @@index([baseId])
 }
 
 model Column {
@@ -101,6 +102,20 @@ model Cell {
     @@id([columnId, rowId])
     @@index([columnId])
     @@index([rowId])
+}
+
+model View {
+  id        String   @id @default(cuid())
+  name      String
+  config    Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  tableId String
+
+  @@index([tableId])
 }
 
 enum ColumnType {

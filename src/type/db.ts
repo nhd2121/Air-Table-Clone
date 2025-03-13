@@ -54,3 +54,23 @@ export interface TableRow {
   id: string;
   [key: string]: string | null;
 }
+
+// Define type for ViewConfig
+export interface ViewConfig {
+  filters?: Record<string, any>;
+  sorts?: Array<{
+    id: string;
+    desc: boolean;
+  }>;
+  hiddenColumns?: string[];
+}
+
+// Define type for View
+export interface View {
+  id: string;
+  name: string;
+  config: ViewConfig;
+  createdAt: Date;
+  updatedAt: Date;
+  tableId: string;
+}

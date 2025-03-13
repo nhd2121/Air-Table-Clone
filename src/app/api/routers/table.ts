@@ -721,7 +721,13 @@ export const tableRouter = createTRPCRouter({
             }
 
             // Batch create all rows
-            const createdRows = [];
+            const createdRows: Array<{
+              id: string;
+              cells: Array<{
+                columnId: string;
+                value: string | null;
+              }>;
+            }> = [];
 
             // Process in smaller batches of 10 to avoid overwhelming the DB
             const batchSize = 10;
@@ -794,7 +800,22 @@ export const tableRouter = createTRPCRouter({
                       },
                     });
 
-                    createdRows.push(completeRow);
+                    if (!completeRow) {
+                      throw new TRPCError({
+                        code: "INTERNAL_SERVER_ERROR",
+                        message: "Failed to retrieve created row",
+                      });
+                    }
+
+                    // Add properly typed row to our results
+                    createdRows.push({
+                      id: completeRow.id,
+                      cells: completeRow.cells.map((cell) => ({
+                        columnId: cell.columnId,
+                        value: cell.value,
+                      })),
+                    });
+
                     return completeRow;
                   });
 

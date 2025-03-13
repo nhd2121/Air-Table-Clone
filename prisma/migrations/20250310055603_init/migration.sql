@@ -70,6 +70,18 @@ CREATE TABLE "Cell" (
 );
 
 -- CreateTable
+CREATE TABLE "View" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "config" JSONB NOT NULL DEFAULT '{}',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "tableId" TEXT NOT NULL,
+
+    CONSTRAINT "View_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Account" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -138,6 +150,9 @@ CREATE INDEX "Cell_columnId_idx" ON "Cell"("columnId");
 CREATE INDEX "Cell_rowId_idx" ON "Cell"("rowId");
 
 -- CreateIndex
+CREATE INDEX "View_tableId_idx" ON "View"("tableId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Account_provider_providerAccountId_key" ON "Account"("provider", "providerAccountId");
 
 -- CreateIndex
@@ -178,3 +193,6 @@ ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId"
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "View" ADD CONSTRAINT "View_tableId_fkey" FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE CASCADE ON UPDATE CASCADE;
