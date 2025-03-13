@@ -707,35 +707,37 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       : 0;
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className="flex h-full w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       {/* Toolbar */}
       <div className="border-b border-gray-200 bg-white p-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
+            {/* Updated Add Record button to match the design */}
             <button
               onClick={handleAddRow}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="flex h-8 items-center rounded bg-blue-100 px-3 text-sm font-medium text-blue-600 hover:bg-blue-200"
             >
-              <Plus size={16} className="mr-1 text-gray-500" />
+              <Plus size={16} className="mr-1" />
               Add record
             </button>
 
+            {/* Updated Add Field button to match the design */}
             <button
               onClick={() => setShowAddColumnModal(true)}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="flex h-8 items-center rounded bg-blue-100 px-3 text-sm font-medium text-blue-600 hover:bg-blue-200"
             >
-              <Plus size={16} className="mr-1 text-gray-500" />
+              <Plus size={16} className="mr-1" />
               Add field
             </button>
 
             <div className="h-6 border-l border-gray-300"></div>
 
-            <button className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+            <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
               <Filter size={16} className="mr-1 text-gray-500" />
               Filter
             </button>
 
-            <button className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+            <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
               <MoreHorizontal size={16} className="mr-1 text-gray-500" />
               More
             </button>
@@ -794,7 +796,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           </div>
         )}
 
-      <div ref={tableContainerRef} className="flex-1 overflow-auto">
+      {/* Make the table container fill the available width */}
+      <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
         <table className="w-full table-fixed border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (

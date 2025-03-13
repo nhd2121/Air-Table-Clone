@@ -40,7 +40,7 @@ export default function BasePage({
   };
 
   return (
-    <div className="w-full">
+    <div className="flex h-full w-full flex-col">
       <BaseNavbar
         baseName={base.name}
         baseId={base.id}
@@ -49,7 +49,8 @@ export default function BasePage({
         onTableCreated={handleTableCreated}
         activeTableId={activeTableId}
       />
-      <div className="container px-4 py-4">
+      {/* Make the table component take up full width */}
+      <div className="w-full flex-1">
         <TableComponent tableId={activeTableId} key={activeTableId} />
       </div>
     </div>
