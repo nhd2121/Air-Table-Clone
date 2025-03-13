@@ -16,12 +16,34 @@ import {
   ChevronDown,
   MoreHorizontal,
   Filter,
+  Layers,
+  ChevronRight,
+  ChevronLeft,
+  Settings,
 } from "lucide-react";
 
 // Define the data structure for each row
 interface TableRow {
   id: string;
   [key: string]: string;
+}
+
+// Define the View structure
+interface View {
+  id: string;
+  name: string;
+  tableId: string;
+  config: ViewConfig;
+}
+
+// Define view configuration type
+interface ViewConfig {
+  filters?: Record<string, any>;
+  sorts?: Array<{
+    id: string;
+    desc: boolean;
+  }>;
+  hiddenColumns?: string[];
 }
 
 // Define column type options
@@ -53,6 +75,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Local state to track current edits before sending to database
   const [editingCells, setEditingCells] = useState<Record<string, string>>({});
 
+  // Views sidebar state
+  const [viewsSidebarOpen, setViewsSidebarOpen] = useState(false);
+  const [views, setViews] = useState<View[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [showCreateViewModal, setShowCreateViewModal] = useState(false);
+  const [newViewName, setNewViewName] = useState("");
+
   // Add search functionality
   const [searchTerm, setSearchTerm] = useState("");
   // State to track if the search is being performed
@@ -62,6 +91,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const viewsSidebarRef = useRef<HTMLDivElement>(null);
   // Ref for search input to implement debounce
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Debounce timeout reference
@@ -69,6 +99,57 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   // Access the utility functions for invalidating queries
   const utils = api.useUtils();
+
+  // Fetch views for the current table
+  const { data: viewsData, isLoading: isLoadingViews } =
+    api.view.getViewsForTable.useQuery(
+      { tableId },
+      {
+        enabled: !!tableId,
+        refetchOnWindowFocus: false,
+      },
+    );
+
+  // Set views data when it's loaded
+  useEffect(() => {
+    if (viewsData) {
+      setViews(viewsData);
+
+      // If no active view is set but we have views, set the first one as active
+      if (!activeViewId && viewsData.length > 0) {
+        setActiveViewId(viewsData[0].id);
+      }
+    }
+  }, [viewsData, activeViewId]);
+
+  // Create view mutation
+  const createView = api.view.create.useMutation({
+    onSuccess: (newView) => {
+      // Update local views state
+      setViews((prevViews) => [...prevViews, newView]);
+
+      // Set the new view as active
+      setActiveViewId(newView.id);
+
+      // Close modal and reset form
+      setShowCreateViewModal(false);
+      setNewViewName("");
+
+      // Invalidate views query to refresh data
+      utils.view.getViewsForTable.invalidate({ tableId });
+    },
+  });
+
+  // Handle creating a new view
+  const handleCreateView = () => {
+    if (!newViewName.trim()) return;
+
+    createView.mutate({
+      tableId,
+      name: newViewName,
+      config: {}, // Empty config for now
+    });
+  };
 
   // Determine which query to use based on search term
   const shouldUseSearch = searchTerm.trim().length > 0;
@@ -131,6 +212,18 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       }
     }
   }, [tableData]);
+
+  // Toggle views sidebar
+  const toggleViewsSidebar = () => {
+    setViewsSidebarOpen(!viewsSidebarOpen);
+  };
+
+  // Handle selecting a view
+  const handleViewSelect = (viewId: string) => {
+    setActiveViewId(viewId);
+    // Here you would apply the view's configuration (filters, sorts, etc.)
+    // For now, we're just updating the active view
+  };
 
   // Function to handle cell changes when a cell is being edited
   const handleCellChange = (
@@ -681,13 +774,21 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       ) {
         setShowAddColumnModal(false);
       }
+
+      if (
+        showCreateViewModal &&
+        modalRef.current &&
+        !modalRef.current.contains(event.target as Node)
+      ) {
+        setShowCreateViewModal(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownRef, modalRef, showAddColumnModal]);
+  }, [dropdownRef, modalRef, showAddColumnModal, showCreateViewModal]);
 
   // Clean up timeout on component unmount
   useEffect(() => {
@@ -729,271 +830,399 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       : 0;
 
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
-      {/* Toolbar */}
-      <div className="border-b border-gray-200 bg-white p-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
-              <Filter size={16} className="mr-1 text-gray-500" />
-              Filter
-            </button>
-
-            <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
-              <MoreHorizontal size={16} className="mr-1 text-gray-500" />
-              More
-            </button>
-          </div>
-
-          {/* Search Bar */}
-          <div className="relative flex w-64 items-center">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <Search size={16} className="text-gray-400" />
-            </div>
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchTerm}
-              onChange={handleSearchChange}
-              placeholder="Search in grid..."
-              className="block w-full rounded-md border border-gray-300 py-1.5 pl-10 pr-10 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            {searchTerm && (
-              <button
-                onClick={clearSearch}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Search Results Status */}
-      {(isSearching || showSearchMessage) && (
-        <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
-          <div className="flex items-center">
-            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-            Searching for &quot;{searchTerm}&quot;...
-          </div>
-        </div>
-      )}
-
-      {/* Search Results Count - Only show after search is complete */}
-      {searchTerm && !isSearching && !showSearchMessage && (
-        <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
-          Found {data.length} {data.length === 1 ? "result" : "results"} for
-          &quot;{searchTerm}&quot;
-        </div>
-      )}
-
-      {/* No Results Message */}
-      {searchTerm &&
-        !isSearching &&
-        !showSearchMessage &&
-        data.length === 0 && (
-          <div className="flex h-32 items-center justify-center bg-gray-50 text-gray-500">
-            No results found for &quot;{searchTerm}&quot;
-          </div>
-        )}
-
-      {/* Make the table container fill the available width */}
-      <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
-        <table className="w-full table-fixed border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-gray-200">
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    style={{ width: header.column.getSize() }}
-                    className="border-r border-gray-200 px-2 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </th>
-                ))}
-                {/* Add an empty column as a spacer at the end */}
-                <th className="w-10 border-none"></th>
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {paddingTop > 0 && (
-              <tr>
-                <td
-                  style={{ height: `${paddingTop}px` }}
-                  colSpan={table.getAllColumns().length + 1}
-                ></td>
-              </tr>
-            )}
-            {virtualRows.map((virtualRow) => {
-              const row = table.getRowModel().rows[virtualRow.index];
-              if (!row) return null;
-
-              return (
-                <tr
-                  key={row.id}
-                  className="border-b border-gray-200 hover:bg-blue-50"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className="border-r border-gray-200 px-0 py-0 text-sm text-gray-800"
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  ))}
-                  {/* Add an empty cell at the end */}
-                  <td className="w-10 border-none"></td>
-                </tr>
-              );
-            })}
-            {paddingBottom > 0 && (
-              <tr>
-                <td
-                  style={{ height: `${paddingBottom}px` }}
-                  colSpan={table.getAllColumns().length + 1}
-                ></td>
-              </tr>
-            )}
-
-            {/* Add a row at the bottom with the "+" button to add new records */}
-            <tr className="border-b border-gray-200 hover:bg-gray-50">
-              <td className="border-r border-gray-200 p-0">
-                <button
-                  onClick={handleAddRow}
-                  className="flex h-full w-full items-center justify-center py-3 text-gray-400 hover:text-gray-600"
-                  title="Add new record"
-                >
-                  <Plus size={18} />
-                </button>
-              </td>
-              {/* Empty cells for the rest of the row */}
-              {Array.from({ length: table.getAllColumns().length - 1 }).map(
-                (_, i) => (
-                  <td key={i} className="border-r border-gray-200"></td>
-                ),
-              )}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer with row count */}
-      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm">
-        {data.length} {searchTerm ? "matching " : ""}record
-        {data.length !== 1 ? "s" : ""}
-      </div>
-
-      {/* Add Row Button - add this fixed button */}
-      <button
-        onClick={handleAdd100Rows}
-        className="absolute bottom-24 right-8 flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700"
-        disabled={isAddingRows || isSearching}
-        title="Add 100 Rows"
+    <div className="relative flex h-full w-full">
+      {/* Views Sidebar */}
+      <div
+        ref={viewsSidebarRef}
+        className={`absolute inset-y-0 left-0 z-20 transition-all duration-300 ease-in-out ${
+          viewsSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{ width: "250px" }}
       >
-        {isAddingRows ? (
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-        ) : (
-          <Plus size={20} />
-        )}
-      </button>
+        <div className="flex h-full flex-col border-r border-gray-200 bg-white shadow-md">
+          <div className="flex items-center justify-between border-b border-gray-200 p-3">
+            <h3 className="text-lg font-medium">Views</h3>
+            <button
+              onClick={toggleViewsSidebar}
+              className="rounded p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          </div>
 
-      {/* Add Column Modal */}
-      {showAddColumnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div
-            ref={modalRef}
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
-          >
-            <h3 className="mb-4 text-xl font-medium">Add New Field</h3>
-            <form onSubmit={handleAddColumn}>
-              <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Field Name
-                </label>
-                <input
-                  type="text"
-                  value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="Enter field name"
-                  required
-                  autoFocus
-                />
+          {/* Views List */}
+          <div className="flex-1 overflow-y-auto p-2">
+            {isLoadingViews ? (
+              <div className="flex items-center justify-center p-4">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
               </div>
+            ) : views.length > 0 ? (
+              <ul className="space-y-1">
+                {views.map((view) => (
+                  <li key={view.id}>
+                    <button
+                      onClick={() => handleViewSelect(view.id)}
+                      className={`flex w-full items-center rounded-md px-3 py-2 text-left text-sm ${
+                        activeViewId === view.id
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      <Layers size={16} className="mr-2" />
+                      {view.name}
+                      <Settings
+                        size={14}
+                        className="ml-auto text-gray-400 hover:text-gray-600"
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="p-4 text-center text-sm text-gray-500">
+                No views yet. Create your first view!
+              </div>
+            )}
+          </div>
 
-              <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Field Type
-                </label>
-                <div className="flex space-x-4">
-                  <div className="flex items-center">
-                    <input
-                      type="radio"
-                      id="type-text"
-                      name="fieldType"
-                      value="TEXT"
-                      checked={newColumnType === "TEXT"}
-                      onChange={() => setNewColumnType("TEXT")}
-                      className="h-4 w-4 text-blue-600"
-                    />
-                    <label
-                      htmlFor="type-text"
-                      className="ml-2 text-sm text-gray-700"
+          {/* Create View Button */}
+          <div className="border-t border-gray-200 p-3">
+            <button
+              onClick={() => setShowCreateViewModal(true)}
+              className="flex w-full items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Plus size={16} className="mr-1" />
+              Create new view
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex h-full w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+        {/* Toolbar */}
+        <div className="border-b border-gray-200 bg-white p-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={toggleViewsSidebar}
+                className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                <Layers size={16} className="mr-1 text-gray-500" />
+                Views
+                {viewsSidebarOpen ? (
+                  <ChevronLeft size={14} className="ml-1" />
+                ) : (
+                  <ChevronRight size={14} className="ml-1" />
+                )}
+              </button>
+
+              <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
+                <MoreHorizontal size={16} className="mr-1 text-gray-500" />
+                More
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative flex w-64 items-center">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search size={16} className="text-gray-400" />
+              </div>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                placeholder="Search in grid..."
+                className="block w-full rounded-md border border-gray-300 py-1.5 pl-10 pr-10 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {searchTerm && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Search Results Status */}
+        {(isSearching || showSearchMessage) && (
+          <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
+            <div className="flex items-center">
+              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+              Searching for &quot;{searchTerm}&quot;...
+            </div>
+          </div>
+        )}
+
+        {/* Search Results Count - Only show after search is complete */}
+        {searchTerm && !isSearching && !showSearchMessage && (
+          <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
+            Found {data.length} {data.length === 1 ? "result" : "results"} for
+            &quot;{searchTerm}&quot;
+          </div>
+        )}
+
+        {/* No Results Message */}
+        {searchTerm &&
+          !isSearching &&
+          !showSearchMessage &&
+          data.length === 0 && (
+            <div className="flex h-32 items-center justify-center bg-gray-50 text-gray-500">
+              No results found for &quot;{searchTerm}&quot;
+            </div>
+          )}
+
+        {/* Make the table container fill the available width */}
+        <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
+          <table className="w-full table-fixed border-collapse">
+            <thead className="sticky top-0 z-10 bg-gray-50">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id} className="border-b border-gray-200">
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      style={{ width: header.column.getSize() }}
+                      className="border-r border-gray-200 px-2 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                     >
-                      Text
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="radio"
-                      id="type-number"
-                      name="fieldType"
-                      value="NUMBER"
-                      checked={newColumnType === "NUMBER"}
-                      onChange={() => setNewColumnType("NUMBER")}
-                      className="h-4 w-4 text-blue-600"
-                    />
-                    <label
-                      htmlFor="type-number"
-                      className="ml-2 text-sm text-gray-700"
-                    >
-                      Number
-                    </label>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                    </th>
+                  ))}
+                  {/* Add an empty column as a spacer at the end */}
+                  <th className="w-10 border-none"></th>
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {paddingTop > 0 && (
+                <tr>
+                  <td
+                    style={{ height: `${paddingTop}px` }}
+                    colSpan={table.getAllColumns().length + 1}
+                  ></td>
+                </tr>
+              )}
+              {virtualRows.map((virtualRow) => {
+                const row = table.getRowModel().rows[virtualRow.index];
+                if (!row) return null;
+
+                return (
+                  <tr
+                    key={row.id}
+                    className="border-b border-gray-200 hover:bg-blue-50"
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="border-r border-gray-200 px-0 py-0 text-sm text-gray-800"
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </td>
+                    ))}
+                    {/* Add an empty cell at the end */}
+                    <td className="w-10 border-none"></td>
+                  </tr>
+                );
+              })}
+              {paddingBottom > 0 && (
+                <tr>
+                  <td
+                    style={{ height: `${paddingBottom}px` }}
+                    colSpan={table.getAllColumns().length + 1}
+                  ></td>
+                </tr>
+              )}
+
+              {/* Add a row at the bottom with the "+" button to add new records */}
+              <tr className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="border-r border-gray-200 p-0">
+                  <button
+                    onClick={handleAddRow}
+                    className="flex h-full w-full items-center justify-center py-3 text-gray-400 hover:text-gray-600"
+                    title="Add new record"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </td>
+                {/* Empty cells for the rest of the row */}
+                {Array.from({ length: table.getAllColumns().length - 1 }).map(
+                  (_, i) => (
+                    <td key={i} className="border-r border-gray-200"></td>
+                  ),
+                )}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer with row count */}
+        <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm">
+          {data.length} {searchTerm ? "matching " : ""}record
+          {data.length !== 1 ? "s" : ""}
+        </div>
+
+        {/* Add Row Button - add this fixed button */}
+        <button
+          onClick={handleAdd100Rows}
+          className="absolute bottom-24 right-8 flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700"
+          disabled={isAddingRows || isSearching}
+          title="Add 100 Rows"
+        >
+          {isAddingRows ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+          ) : (
+            <Plus size={20} />
+          )}
+        </button>
+
+        {/* Add Column Modal */}
+        {showAddColumnModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div
+              ref={modalRef}
+              className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
+            >
+              <h3 className="mb-4 text-xl font-medium">Add New Field</h3>
+              <form onSubmit={handleAddColumn}>
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Field Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Enter field name"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Field Type
+                  </label>
+                  <div className="flex space-x-4">
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        id="type-text"
+                        name="fieldType"
+                        value="TEXT"
+                        checked={newColumnType === "TEXT"}
+                        onChange={() => setNewColumnType("TEXT")}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label
+                        htmlFor="type-text"
+                        className="ml-2 text-sm text-gray-700"
+                      >
+                        Text
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        id="type-number"
+                        name="fieldType"
+                        value="NUMBER"
+                        checked={newColumnType === "NUMBER"}
+                        onChange={() => setNewColumnType("NUMBER")}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label
+                        htmlFor="type-number"
+                        className="ml-2 text-sm text-gray-700"
+                      >
+                        Number
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddColumnModal(false)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-                  disabled={addColumn.isPending}
-                >
-                  {addColumn.isPending ? "Adding..." : "Add Field"}
-                </button>
-              </div>
-            </form>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddColumnModal(false)}
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                    disabled={addColumn.isPending}
+                  >
+                    {addColumn.isPending ? "Adding..." : "Add Field"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Create View Modal */}
+        {showCreateViewModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div
+              ref={modalRef}
+              className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
+            >
+              <h3 className="mb-4 text-xl font-medium">Create New View</h3>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateView();
+                }}
+              >
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    View Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newViewName}
+                    onChange={(e) => setNewViewName(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Enter view name"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateViewModal(false)}
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                    disabled={createView.isPending}
+                  >
+                    {createView.isPending ? "Creating..." : "Create View"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
