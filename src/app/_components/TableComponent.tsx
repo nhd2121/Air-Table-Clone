@@ -21,6 +21,8 @@ import {
   ChevronLeft,
   Settings,
 } from "lucide-react";
+import { AddColumnModal, type ColumnType } from "./AddColumnModal";
+import { CreateViewModal } from "./CreateViewModal";
 
 // Define the data structure for each row
 interface TableRow {
@@ -46,9 +48,6 @@ interface ViewConfig {
   hiddenColumns?: string[];
 }
 
-// Define column type options
-type ColumnType = "TEXT" | "NUMBER";
-
 // Define the column types state structure
 type ColumnTypesState = Record<string, ColumnType>;
 
@@ -65,8 +64,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   // State for add column modal
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
-  const [newColumnName, setNewColumnName] = useState("");
-  const [newColumnType, setNewColumnType] = useState<ColumnType>("TEXT");
   // State to track if we're adding 100 rows
   const [isAddingRows, setIsAddingRows] = useState(false);
   // Reference to table container
@@ -80,7 +77,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [views, setViews] = useState<View[]>([]);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [showCreateViewModal, setShowCreateViewModal] = useState(false);
-  const [newViewName, setNewViewName] = useState("");
 
   // Add search functionality
   const [searchTerm, setSearchTerm] = useState("");
@@ -90,7 +86,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const [showSearchMessage, setShowSearchMessage] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
   const viewsSidebarRef = useRef<HTMLDivElement>(null);
   // Ref for search input to implement debounce
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -133,7 +128,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
       // Close modal and reset form
       setShowCreateViewModal(false);
-      setNewViewName("");
 
       // Invalidate views query to refresh data
       utils.view.getViewsForTable.invalidate({ tableId });
@@ -141,12 +135,12 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   });
 
   // Handle creating a new view
-  const handleCreateView = () => {
-    if (!newViewName.trim()) return;
+  const handleCreateView = (viewName: string) => {
+    if (!viewName.trim()) return;
 
     createView.mutate({
       tableId,
-      name: newViewName,
+      name: viewName,
       config: {}, // Empty config for now
     });
   };
@@ -360,8 +354,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const addColumn = api.table.addColumn.useMutation({
     onSuccess: (newColumn) => {
       // Reset form values
-      setNewColumnName("");
-      setNewColumnType("TEXT");
       setShowAddColumnModal(false);
 
       // Instead of invalidating queries, update the local state
@@ -493,17 +485,18 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   };
 
   // Handle adding a new column
-  const handleAddColumn = (e: React.FormEvent): void => {
-    e.preventDefault();
-
-    if (!newColumnName.trim()) {
+  const handleAddColumn = (
+    columnName: string,
+    columnType: ColumnType,
+  ): void => {
+    if (!columnName.trim()) {
       return;
     }
 
     addColumn.mutate({
       tableId,
-      name: newColumnName.trim(),
-      type: newColumnType,
+      name: columnName.trim(),
+      type: columnType,
     });
   };
 
@@ -766,29 +759,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       ) {
         setActiveDropdown(null);
       }
-
-      if (
-        showAddColumnModal &&
-        modalRef.current &&
-        !modalRef.current.contains(event.target as Node)
-      ) {
-        setShowAddColumnModal(false);
-      }
-
-      if (
-        showCreateViewModal &&
-        modalRef.current &&
-        !modalRef.current.contains(event.target as Node)
-      ) {
-        setShowCreateViewModal(false);
-      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownRef, modalRef, showAddColumnModal, showCreateViewModal]);
+  }, [dropdownRef]);
 
   // Clean up timeout on component unmount
   useEffect(() => {
@@ -1086,142 +1063,19 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           )}
         </button>
 
-        {/* Add Column Modal */}
-        {showAddColumnModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div
-              ref={modalRef}
-              className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
-            >
-              <h3 className="mb-4 text-xl font-medium">Add New Field</h3>
-              <form onSubmit={handleAddColumn}>
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Field Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newColumnName}
-                    onChange={(e) => setNewColumnName(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="Enter field name"
-                    required
-                    autoFocus
-                  />
-                </div>
+        <AddColumnModal
+          isOpen={showAddColumnModal}
+          onClose={() => setShowAddColumnModal(false)}
+          onAddColumn={handleAddColumn}
+          isPending={addColumn.isPending}
+        />
 
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Field Type
-                  </label>
-                  <div className="flex space-x-4">
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        id="type-text"
-                        name="fieldType"
-                        value="TEXT"
-                        checked={newColumnType === "TEXT"}
-                        onChange={() => setNewColumnType("TEXT")}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <label
-                        htmlFor="type-text"
-                        className="ml-2 text-sm text-gray-700"
-                      >
-                        Text
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        id="type-number"
-                        name="fieldType"
-                        value="NUMBER"
-                        checked={newColumnType === "NUMBER"}
-                        onChange={() => setNewColumnType("NUMBER")}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <label
-                        htmlFor="type-number"
-                        className="ml-2 text-sm text-gray-700"
-                      >
-                        Number
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddColumnModal(false)}
-                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-                    disabled={addColumn.isPending}
-                  >
-                    {addColumn.isPending ? "Adding..." : "Add Field"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Create View Modal */}
-        {showCreateViewModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div
-              ref={modalRef}
-              className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
-            >
-              <h3 className="mb-4 text-xl font-medium">Create New View</h3>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleCreateView();
-                }}
-              >
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    View Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newViewName}
-                    onChange={(e) => setNewViewName(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="Enter view name"
-                    required
-                    autoFocus
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateViewModal(false)}
-                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-                    disabled={createView.isPending}
-                  >
-                    {createView.isPending ? "Creating..." : "Create View"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <CreateViewModal
+          isOpen={showCreateViewModal}
+          onClose={() => setShowCreateViewModal(false)}
+          onCreateView={handleCreateView}
+          isPending={createView.isPending}
+        />
       </div>
     </div>
   );
