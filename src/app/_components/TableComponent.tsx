@@ -11,11 +11,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
 import {
   Plus,
-  Search,
-  X,
-  ChevronDown,
   MoreHorizontal,
-  Filter,
   Layers,
   ChevronRight,
   ChevronLeft,
@@ -23,6 +19,9 @@ import {
 } from "lucide-react";
 import { AddColumnModal, type ColumnType } from "./AddColumnModal";
 import { CreateViewModal } from "./CreateViewModal";
+import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
+import { SearchBarTable } from "./SearchBarTable";
+import LoadingTableData from "./LoadingTableData";
 
 // Define the data structure for each row
 interface TableRow {
@@ -85,12 +84,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Track if we should show a message about performing a search
   const [showSearchMessage, setShowSearchMessage] = useState(false);
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const viewsSidebarRef = useRef<HTMLDivElement>(null);
-  // Ref for search input to implement debounce
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  // Debounce timeout reference
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Access the utility functions for invalidating queries
   const utils = api.useUtils();
@@ -514,96 +508,12 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   };
 
   // Handle column type change
-  const changeColumnType = (columnId: string, type: ColumnType): void => {
+  const handleColumnTypeChange = (columnId: string, type: ColumnType): void => {
     setColumnTypes((prevTypes) => ({
       ...prevTypes,
       [columnId]: type,
     }));
     setActiveDropdown(null);
-  };
-
-  // Handle search with debounce
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-
-    // Set searching state
-    if (value.trim()) {
-      setIsSearching(true);
-    }
-
-    // Clear any existing timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    // If search is empty, immediately clear search results
-    if (value.trim() === "") {
-      setIsSearching(false);
-      return;
-    }
-
-    // Show the search message
-    setShowSearchMessage(true);
-
-    // Debounce the search to avoid too many requests
-    searchTimeoutRef.current = setTimeout(() => {
-      // This will trigger the search query due to the dependency on searchTerm
-      setShowSearchMessage(false);
-    }, 500);
-  };
-
-  // Clear search
-  const clearSearch = () => {
-    setSearchTerm("");
-    setIsSearching(false);
-    setShowSearchMessage(false);
-    // Clear the timeout if it exists
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
-  };
-
-  // Create a reusable dropdown component for column headers
-  const ColumnTypeDropdown: React.FC<{
-    columnId: string;
-    label: string;
-  }> = ({ columnId, label }) => {
-    return (
-      <div className="relative">
-        <div
-          className="flex cursor-pointer items-center"
-          onClick={() => setActiveDropdown(columnId)}
-        >
-          <span className="mr-1 font-medium">{label}</span>
-          <ChevronDown size={14} className="ml-1 text-gray-500" />
-        </div>
-
-        {activeDropdown === columnId && (
-          <div
-            ref={dropdownRef}
-            className="absolute left-0 top-full z-10 mt-1 w-36 rounded-md border border-gray-200 bg-white shadow-lg"
-          >
-            <div className="p-2 text-sm font-semibold text-gray-700">
-              Column Type
-            </div>
-            <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "TEXT" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "TEXT")}
-            >
-              Text
-            </div>
-            <div
-              className={`cursor-pointer p-2 text-sm hover:bg-gray-100 ${columnTypes[columnId] === "NUMBER" ? "bg-blue-50 text-blue-700" : ""}`}
-              onClick={() => changeColumnType(columnId, "NUMBER")}
-            >
-              Number
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   // Create column helper with type safety
@@ -644,7 +554,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         columnHelper.display({
           id: column.id,
           header: () => (
-            <ColumnTypeDropdown columnId={column.id} label={column.name} />
+            <ColumnTypeDropdown
+              columnId={column.id}
+              label={column.name}
+              activeDropdown={activeDropdown}
+              setActiveDropdown={setActiveDropdown}
+              columnTypes={columnTypes}
+              onTypeChange={handleColumnTypeChange}
+            />
           ),
           cell: ({ row }) => {
             const rowId = row.original.id;
@@ -750,41 +667,8 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     overscan: 10,
   });
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setActiveDropdown(null);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [dropdownRef]);
-
-  // Clean up timeout on component unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
   if (isLoading && !isSearching) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-t-2 border-blue-500"></div>
-          <p className="mt-4 text-gray-600">Loading table data...</p>
-        </div>
-      </div>
-    );
+    return <LoadingTableData />;
   }
 
   if (error) {
@@ -900,28 +784,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               </button>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative flex w-64 items-center">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <Search size={16} className="text-gray-400" />
-              </div>
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchTerm}
-                onChange={handleSearchChange}
-                placeholder="Search in grid..."
-                className="block w-full rounded-md border border-gray-300 py-1.5 pl-10 pr-10 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              {searchTerm && (
-                <button
-                  onClick={clearSearch}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+            {/* Search Bar Component */}
+            <SearchBarTable
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              setIsSearching={setIsSearching}
+              setShowSearchMessage={setShowSearchMessage}
+            />
           </div>
         </div>
 
