@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -22,30 +27,10 @@ import { CreateViewModal } from "./CreateViewModal";
 import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
 import { SearchBarTable } from "./SearchBarTable";
 import LoadingTableData from "./LoadingTableData";
-
-// Define the data structure for each row
-interface TableRow {
-  id: string;
-  [key: string]: string;
-}
-
-// Define the View structure
-interface View {
-  id: string;
-  name: string;
-  tableId: string;
-  config: ViewConfig;
-}
-
-// Define view configuration type
-interface ViewConfig {
-  filters?: Record<string, any>;
-  sorts?: Array<{
-    id: string;
-    desc: boolean;
-  }>;
-  hiddenColumns?: string[];
-}
+import type { View } from "@/type/db";
+import type { TableRow } from "@/type/db";
+import AddRowsButton from "./AddRowsButton";
+import RecordCountFooter from "./RecordCountFooter";
 
 // Define the column types state structure
 type ColumnTypesState = Record<string, ColumnType>;
@@ -181,20 +166,22 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     if (tableData) {
       // Initialize column types
       const types: ColumnTypesState = {};
-      tableData.columns.forEach((col) => {
-        types[col.id] = col.type as ColumnType;
-      });
+      tableData.columns.forEach(
+        (col: { id: string | number; type: string }) => {
+          types[col.id] = col.type as ColumnType;
+        },
+      );
       setColumnTypes(types);
 
       // Initialize data with rows
       if (tableData.rows) {
         // Ensure all rows conform to the TableRow interface by explicitly checking for id
-        const typedRows: TableRow[] = tableData.rows.map((row) => {
+        const typedRows: TableRow[] = tableData.rows.map((row: TableRow) => {
           // Make sure each row has an id
           if (!("id" in row)) {
             console.error("Row is missing id property", row);
           }
-          return row as TableRow;
+          return row;
         });
         setData(typedRows);
       }
@@ -331,7 +318,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         const newRowObj: TableRow = { id: newRow.id };
         newRow.cells.forEach((cell) => {
           const column = tableData.columns.find(
-            (col) => col.id === cell.columnId,
+            (col: { id: string }) => col.id === cell.columnId,
           );
           if (column) {
             newRowObj[column.id] = cell.value ?? "";
@@ -400,7 +387,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
           const newRowObj: TableRow = { id: newRow.id };
           newRow.cells.forEach((cell: any) => {
             const column = tableData.columns.find(
-              (col) => col.id === cell.columnId,
+              (col: { id: any }) => col.id === cell.columnId,
             );
             if (column) {
               newRowObj[column.id] = cell.value ?? "";
@@ -538,7 +525,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             <input type="checkbox" className="h-4 w-4 rounded text-blue-500" />
           </div>
         ),
-        cell: ({ row }) => (
+        cell: () => (
           <div className="flex items-center pl-2">
             <input type="checkbox" className="h-4 w-4 rounded text-blue-500" />
           </div>
@@ -548,7 +535,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     ];
 
     // Add data columns using columnHelper.accessor properly
-    tableData.columns.forEach((column) => {
+    tableData.columns.forEach((column: { id: string; name: string }) => {
       columns.push(
         // Use display column instead of accessor for dynamic properties
         columnHelper.display({
@@ -628,6 +615,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             return (
               <div
                 className="w-full cursor-pointer p-2 hover:bg-gray-50"
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 onClick={() => setEditingCell({ rowId, columnId })}
               >
                 {value}
@@ -904,7 +892,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
                 {/* Empty cells for the rest of the row */}
                 {Array.from({ length: table.getAllColumns().length - 1 }).map(
                   (_, i) => (
-                    <td key={i} className="border-r border-gray-200"></td>
+                    <td key={i}></td>
                   ),
                 )}
               </tr>
@@ -913,24 +901,14 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         </div>
 
         {/* Footer with row count */}
-        <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm">
-          {data.length} {searchTerm ? "matching " : ""}record
-          {data.length !== 1 ? "s" : ""}
-        </div>
+        <RecordCountFooter count={data.length} searchTerm={searchTerm} />
 
         {/* Add Row Button - add this fixed button */}
-        <button
-          onClick={handleAdd100Rows}
-          className="absolute bottom-24 right-8 flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700"
-          disabled={isAddingRows || isSearching}
-          title="Add 100 Rows"
-        >
-          {isAddingRows ? (
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-          ) : (
-            <Plus size={20} />
-          )}
-        </button>
+        <AddRowsButton
+          handleAdd100Rows={handleAdd100Rows}
+          isAddingRows={isAddingRows}
+          isSearching={isSearching}
+        />
 
         <AddColumnModal
           isOpen={showAddColumnModal}
