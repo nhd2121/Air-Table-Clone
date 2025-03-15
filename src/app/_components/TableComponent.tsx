@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-optional-chain */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -81,6 +82,11 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
             // Set the first view as active by default if no active view
             if (!activeViewId && data[0]) {
               setActiveViewId(data[0].id);
+
+              // If the view has a different table than the current one, update the active table
+              if (data[0].table && data[0].table.id !== tableId) {
+                onTableSelect?.(data[0].table.id);
+              }
             }
           }
         },
@@ -107,14 +113,30 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     }
   }, [viewsData, activeViewId]);
 
-  // Create view mutation
+  // Create view mutation - handle the new response structure
   const createView = api.view.create.useMutation({
-    onSuccess: (newView) => {
+    onSuccess: (result) => {
+      // The result contains both the view and its associated table
+      const newView = {
+        id: result.id,
+        name: result.name,
+        config: result.config,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+        tableId: result.tableId,
+        table: result.table,
+      };
+
       // Update local views state
       setViews((prevViews) => [...prevViews, newView as View]);
 
       // Set the new view as active
       setActiveViewId(newView.id);
+
+      // Switch to the table associated with this view
+      if (onTableSelect && newView.table && newView.table.id !== tableId) {
+        onTableSelect(newView.table.id);
+      }
 
       // Close modal and reset form
       setShowCreateViewModal(false);
@@ -204,10 +226,18 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     setViewsSidebarOpen(!viewsSidebarOpen);
   };
 
-  // Handle selecting a view
+  // Handle selecting a view, it should switch to the corresponding table
   const handleViewSelect = (viewId: string) => {
-    setActiveViewId(viewId);
-    // Here you would apply the view's configuration (filters, sorts, etc.)
+    const selectedView = views.find((view) => view.id === viewId);
+    if (selectedView && selectedView.table) {
+      // Set the active view
+      setActiveViewId(viewId);
+
+      // Switch to the table associated with this view
+      if (onTableSelect && selectedView.table.id !== tableId) {
+        onTableSelect(selectedView.table.id);
+      }
+    }
   };
 
   // Function to handle cell changes when a cell is being edited

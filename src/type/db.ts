@@ -1,5 +1,4 @@
-// src/types/db.ts
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Define type for Column
 export interface Column {
   id: string;
@@ -73,4 +72,10 @@ export interface View {
   createdAt: Date;
   updatedAt: Date;
   tableId: string;
+  // Add the table relationship
+  table?: {
+    id: string;
+    name: string;
+    baseId?: string;
+  };
 }

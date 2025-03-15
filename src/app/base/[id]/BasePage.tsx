@@ -2,8 +2,9 @@
 
 import { BaseNavbar } from "@/app/_components/mainPageNavBar";
 import TableComponent from "@/app/_components/TableComponent";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { Table } from "@/type/db";
+import { api } from "@/trpc/react";
 
 interface BasePageProps {
   base: {
@@ -23,21 +24,36 @@ export default function BasePage({
   // State to track the currently selected table
   const [activeTableId, setActiveTableId] = useState(firstTableId);
 
-  // Maintain tables list in state so we can update it when new tables are added
+  // Maintain tables list in state so we can update it when new tables or views are added
   const [tables, setTables] = useState(initialTables);
 
-  // Handle table change
-  const handleTableChange = (tableId: string) => {
+  // Handle table change - this will be passed to both the navbar and the table component
+  const handleTableChange = useCallback((tableId: string) => {
     setActiveTableId(tableId);
-  };
+  }, []);
 
-  // Handle table creation
-  const handleTableCreated = (newTable: Table) => {
+  // Handle table creation from the navbar
+  const handleTableCreated = useCallback((newTable: Table) => {
     // Add the new table to our state
     setTables((currentTables) => [...currentTables, newTable]);
     // Select the newly created table
     setActiveTableId(newTable.id);
-  };
+  }, []);
+
+  // Query to get all tables for the base to ensure our list stays up to date
+  api.table.getTablesForBase.useQuery(
+    { baseId: base.id },
+    {
+      enabled: !!base.id,
+      refetchOnWindowFocus: true,
+      onSuccess: (fetchedTables) => {
+        // Update tables list if it doesn't match what's in the database
+        if (fetchedTables.length !== tables.length) {
+          setTables(fetchedTables);
+        }
+      },
+    },
+  );
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -49,9 +65,13 @@ export default function BasePage({
         onTableCreated={handleTableCreated}
         activeTableId={activeTableId}
       />
-      {/* Make the table component take up full width */}
+      {/* Make the table component take up full width and pass the onTableSelect callback */}
       <div className="w-full flex-1">
-        <TableComponent tableId={activeTableId} key={activeTableId} />
+        <TableComponent
+          tableId={activeTableId}
+          key={activeTableId}
+          onTableSelect={handleTableChange}
+        />
       </div>
     </div>
   );
