@@ -32,7 +32,10 @@ import CreateColumnButton from "./CreateColumnButton";
 import ViewSelectButton from "./ViewSelectButton";
 import ToggleViewSidebarButton from "./ToolbarButton";
 
-const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
+const TableComponent: React.FC<TableComponentProps> = ({
+  tableId,
+  onTableSelect,
+}) => {
   // State to track data
   const [data, setData] = useState<TableRow[]>([]);
   // Column types
@@ -76,17 +79,15 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         refetchOnWindowFocus: false,
         onSuccess: (data) => {
           if (data && data.length > 0) {
+            // Filter views to only show those for the current table
+            const tableViews = data.filter((view) => view.tableId === tableId);
+
             // Set the views in state
-            setViews(data as View[]);
+            setViews(tableViews as View[]);
 
             // Set the first view as active by default if no active view
-            if (!activeViewId && data[0]) {
-              setActiveViewId(data[0].id);
-
-              // If the view has a different table than the current one, update the active table
-              if (data[0].table && data[0].table.id !== tableId) {
-                onTableSelect?.(data[0].table.id);
-              }
+            if (!activeViewId && tableViews.length > 0) {
+              setActiveViewId(tableViews[0].id);
             }
           }
         },
@@ -102,16 +103,18 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Set views data when it's loaded
   useEffect(() => {
     if (viewsData) {
-      setViews(viewsData as View[]);
+      // Filter views to only include those for the current table
+      const tableViews = viewsData.filter((view) => view.tableId === tableId);
+      setViews(tableViews as View[]);
 
       // If no active view is set but we have views, set the first one as active
-      if (!activeViewId && viewsData.length > 0) {
-        if (viewsData[0]) {
-          setActiveViewId(viewsData[0].id);
+      if (!activeViewId && tableViews.length > 0) {
+        if (tableViews[0]) {
+          setActiveViewId(tableViews[0].id);
         }
       }
     }
-  }, [viewsData, activeViewId]);
+  }, [viewsData, activeViewId, tableId]);
 
   // Create view mutation - handle the new response structure
   const createView = api.view.create.useMutation({
@@ -229,12 +232,16 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Handle selecting a view, it should switch to the corresponding table
   const handleViewSelect = (viewId: string) => {
     const selectedView = views.find((view) => view.id === viewId);
-    if (selectedView && selectedView.table) {
+    if (selectedView) {
       // Set the active view
       setActiveViewId(viewId);
 
       // Switch to the table associated with this view
-      if (onTableSelect && selectedView.table.id !== tableId) {
+      if (
+        onTableSelect &&
+        selectedView.table &&
+        selectedView.table.id !== tableId
+      ) {
         onTableSelect(selectedView.table.id);
       }
     }

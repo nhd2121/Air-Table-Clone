@@ -35,7 +35,7 @@ export const viewRouter = createTRPCRouter({
             ownerId: ctx.session.user.id,
           },
         },
-        select: { id: true, baseId: true },
+        select: { id: true },
       });
 
       if (!table) {
@@ -45,12 +45,10 @@ export const viewRouter = createTRPCRouter({
         });
       }
 
-      // Get all views for this table's base (not just the table)
+      // Get views specifically for this table only, not the entire base
       return ctx.db.view.findMany({
         where: {
-          table: {
-            baseId: table.baseId,
-          },
+          tableId: input.tableId,
         },
         include: {
           table: {
