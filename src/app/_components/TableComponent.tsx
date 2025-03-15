@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -14,14 +15,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
-import {
-  Plus,
-  MoreHorizontal,
-  Layers,
-  ChevronRight,
-  ChevronLeft,
-  Settings,
-} from "lucide-react";
+import { ChevronLeft, Plus } from "lucide-react";
 import { AddColumnModal, type ColumnType } from "./AddColumnModal";
 import { CreateViewModal } from "./CreateViewModal";
 import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
@@ -31,13 +25,11 @@ import type { View } from "@/type/db";
 import type { TableRow } from "@/type/db";
 import AddRowsButton from "./AddRowsButton";
 import RecordCountFooter from "./RecordCountFooter";
-
-// Define the column types state structure
-type ColumnTypesState = Record<string, ColumnType>;
-
-interface TableComponentProps {
-  tableId: string;
-}
+import AddRecordButton from "./AddRecordButton";
+import type { ColumnTypesState, TableComponentProps } from "./types/type";
+import CreateColumnButton from "./CreateColumnButton";
+import ViewSelectButton from "./ViewSelectButton";
+import ToggleViewSidebarButton from "./ToolbarButton";
 
 const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // State to track data
@@ -87,11 +79,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   // Set views data when it's loaded
   useEffect(() => {
     if (viewsData) {
-      setViews(viewsData);
+      setViews(viewsData as View[]);
 
       // If no active view is set but we have views, set the first one as active
       if (!activeViewId && viewsData.length > 0) {
-        setActiveViewId(viewsData[0].id);
+        if (viewsData[0]) {
+          setActiveViewId(viewsData[0].id);
+        }
       }
     }
   }, [viewsData, activeViewId]);
@@ -100,7 +94,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const createView = api.view.create.useMutation({
     onSuccess: (newView) => {
       // Update local views state
-      setViews((prevViews) => [...prevViews, newView]);
+      setViews((prevViews) => [...prevViews, newView as View]);
 
       // Set the new view as active
       setActiveViewId(newView.id);
@@ -197,7 +191,6 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
   const handleViewSelect = (viewId: string) => {
     setActiveViewId(viewId);
     // Here you would apply the view's configuration (filters, sorts, etc.)
-    // For now, we're just updating the active view
   };
 
   // Function to handle cell changes when a cell is being edited
@@ -220,8 +213,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
     }));
   };
 
-  // When cell edit is complete, update both local state and database
-  // without causing a full table reload
+  // When cell edit is complete, update both local state and database without causing a full table reload
   const handleCellBlur = (rowId: string, columnId: string): void => {
     const cellKey = `${rowId}-${columnId}`;
     const value = editingCells[cellKey] ?? "";
@@ -433,7 +425,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         const tempRow: TableRow = { id: tempRowId };
 
         // Add empty values for all columns
-        tableData.columns.forEach((col) => {
+        tableData.columns.forEach((col: { id: string | number }) => {
           tempRow[col.id] = "";
         });
 
@@ -483,15 +475,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
 
   // Add Column Button Component for the column header
   const AddColumnHeader: React.FC = () => {
-    return (
-      <div
-        className="flex h-full w-10 cursor-pointer items-center justify-center text-gray-400 hover:text-gray-600"
-        onClick={() => setShowAddColumnModal(true)}
-        title="Add field"
-      >
-        <Plus size={18} />
-      </div>
-    );
+    return <CreateColumnButton onClick={() => setShowAddColumnModal(true)} />;
   };
 
   // Handle column type change
@@ -689,15 +673,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         style={{ width: "250px" }}
       >
         <div className="flex h-full flex-col border-r border-gray-200 bg-white shadow-md">
-          <div className="flex items-center justify-between border-b border-gray-200 p-3">
+          <button
+            onClick={toggleViewsSidebar}
+            className="flex items-center justify-between rounded border-b border-gray-200 p-3 text-gray-500 hover:bg-gray-100"
+          >
             <h3 className="text-lg font-medium">Views</h3>
-            <button
-              onClick={toggleViewsSidebar}
-              className="rounded p-1 text-gray-500 hover:bg-gray-100"
-            >
-              <ChevronLeft size={18} />
-            </button>
-          </div>
+            <ChevronLeft size={18} />
+          </button>
 
           {/* Views List */}
           <div className="flex-1 overflow-y-auto p-2">
@@ -705,32 +687,21 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               <div className="flex items-center justify-center p-4">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
               </div>
-            ) : views.length > 0 ? (
+            ) : (
               <ul className="space-y-1">
                 {views.map((view) => (
                   <li key={view.id}>
-                    <button
-                      onClick={() => handleViewSelect(view.id)}
-                      className={`flex w-full items-center rounded-md px-3 py-2 text-left text-sm ${
-                        activeViewId === view.id
-                          ? "bg-blue-50 text-blue-700"
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      <Layers size={16} className="mr-2" />
-                      {view.name}
-                      <Settings
-                        size={14}
-                        className="ml-auto text-gray-400 hover:text-gray-600"
-                      />
-                    </button>
+                    {/* View Button */}
+                    <ViewSelectButton
+                      key={view.id}
+                      id={view.id}
+                      name={view.name}
+                      isActive={activeViewId === view.id}
+                      onSelect={handleViewSelect}
+                    />
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="p-4 text-center text-sm text-gray-500">
-                No views yet. Create your first view!
-              </div>
             )}
           </div>
 
@@ -752,24 +723,13 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
         {/* Toolbar */}
         <div className="border-b border-gray-200 bg-white p-2">
           <div className="flex items-center justify-between">
+            {/* Toggle view sidebar Components */}
             <div className="flex items-center space-x-2">
-              <button
+              <ToggleViewSidebarButton
+                isOpen={viewsSidebarOpen}
                 onClick={toggleViewsSidebar}
-                className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50"
-              >
-                <Layers size={16} className="mr-1 text-gray-500" />
-                Views
-                {viewsSidebarOpen ? (
-                  <ChevronLeft size={14} className="ml-1" />
-                ) : (
-                  <ChevronRight size={14} className="ml-1" />
-                )}
-              </button>
-
-              <button className="flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50">
-                <MoreHorizontal size={16} className="mr-1 text-gray-500" />
-                More
-              </button>
+                label="Views"
+              />
             </div>
 
             {/* Search Bar Component */}
@@ -881,13 +841,7 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
               {/* Add a row at the bottom with the "+" button to add new records */}
               <tr className="border-b border-gray-200 hover:bg-gray-50">
                 <td className="border-r border-gray-200 p-0">
-                  <button
-                    onClick={handleAddRow}
-                    className="flex h-full w-full items-center justify-center py-3 text-gray-400 hover:text-gray-600"
-                    title="Add new record"
-                  >
-                    <Plus size={18} />
-                  </button>
+                  <AddRecordButton handleAddRow={handleAddRow} />
                 </td>
                 {/* Empty cells for the rest of the row */}
                 {Array.from({ length: table.getAllColumns().length - 1 }).map(

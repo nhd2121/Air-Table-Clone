@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
@@ -705,7 +707,7 @@ export const tableRouter = createTRPCRouter({
             }
 
             // Pre-generate fake data for each column type for all rows
-            const rowsData = [];
+            const rowsData: any[] = [];
 
             for (let i = 0; i < input.count; i++) {
               const fakerData = {
