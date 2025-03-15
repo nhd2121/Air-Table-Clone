@@ -118,34 +118,27 @@ const TableComponent: React.FC<TableComponentProps> = ({
 
   // Create view mutation - handle the new response structure
   const createView = api.view.create.useMutation({
-    onSuccess: (result) => {
-      // The result contains both the view and its associated table
-      const newView = {
-        id: result.id,
-        name: result.name,
-        config: result.config,
-        createdAt: result.createdAt,
-        updatedAt: result.updatedAt,
-        tableId: result.tableId,
-        table: result.table,
-      };
-
+    onSuccess: (newView) => {
       // Update local views state
       setViews((prevViews) => [...prevViews, newView as View]);
 
       // Set the new view as active
       setActiveViewId(newView.id);
 
-      // Switch to the table associated with this view
-      if (onTableSelect && newView.table && newView.table.id !== tableId) {
-        onTableSelect(newView.table.id);
-      }
-
       // Close modal and reset form
       setShowCreateViewModal(false);
 
+      // Open the views sidebar if it's not already open
+      if (!viewsSidebarOpen) {
+        setViewsSidebarOpen(true);
+      }
+
       // Invalidate views query to refresh data
       utils.view.getViewsForTable.invalidate({ tableId });
+    },
+    onError: (error) => {
+      console.error("Error creating view:", error);
+      // You could add error handling here, such as showing an error message
     },
   });
 
@@ -156,7 +149,7 @@ const TableComponent: React.FC<TableComponentProps> = ({
     createView.mutate({
       tableId,
       name: viewName,
-      config: {}, // Empty config for now
+      config: {},
     });
   };
 

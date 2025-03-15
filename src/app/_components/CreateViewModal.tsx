@@ -7,6 +7,7 @@ interface CreateViewModalProps {
   onClose: () => void;
   onCreateView: (name: string) => void;
   isPending: boolean;
+  error?: string;
 }
 
 export function CreateViewModal({
@@ -14,6 +15,7 @@ export function CreateViewModal({
   onClose,
   onCreateView,
   isPending,
+  error,
 }: CreateViewModalProps) {
   const [newViewName, setNewViewName] = useState("");
   const modalRef = useRef<HTMLDivElement>(null);
@@ -63,6 +65,13 @@ export function CreateViewModal({
         className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
       >
         <h3 className="mb-4 text-xl font-medium">Create New View</h3>
+
+        {error && (
+          <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleCreateView}>
           <div className="mb-4">
             <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -76,6 +85,7 @@ export function CreateViewModal({
               placeholder="Enter view name"
               required
               autoFocus
+              disabled={isPending}
             />
           </div>
 
@@ -84,6 +94,7 @@ export function CreateViewModal({
               type="button"
               onClick={onClose}
               className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              disabled={isPending}
             >
               Cancel
             </button>
