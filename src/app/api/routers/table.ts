@@ -315,6 +315,15 @@ export const tableRouter = createTRPCRouter({
               },
             });
 
+            // Create default "View 1" for this table
+            await tx.view.create({
+              data: {
+                name: "View 1",
+                config: {}, // Empty default config
+                table: { connect: { id: table.id } },
+              },
+            });
+
             // Create initial rows in batch
             const rowPromises = [];
             for (let i = 0; i < 4; i++) {

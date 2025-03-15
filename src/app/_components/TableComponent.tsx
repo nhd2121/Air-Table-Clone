@@ -73,8 +73,25 @@ const TableComponent: React.FC<TableComponentProps> = ({ tableId }) => {
       {
         enabled: !!tableId,
         refetchOnWindowFocus: false,
+        onSuccess: (data) => {
+          if (data && data.length > 0) {
+            // Set the views in state
+            setViews(data as View[]);
+
+            // Set the first view as active by default if no active view
+            if (!activeViewId && data[0]) {
+              setActiveViewId(data[0].id);
+            }
+          }
+        },
       },
     );
+
+  // Reset active view and views when tableId changes
+  useEffect(() => {
+    setActiveViewId(null);
+    setViews([]);
+  }, [tableId]);
 
   // Set views data when it's loaded
   useEffect(() => {
