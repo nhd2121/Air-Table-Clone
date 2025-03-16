@@ -16,7 +16,6 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
-import { ChevronLeft, Plus } from "lucide-react";
 import { AddColumnModal, type ColumnType } from "./AddColumnModal";
 import { CreateViewModal } from "./CreateViewModal";
 import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
@@ -32,7 +31,6 @@ import type { ColumnTypesState, TableComponentProps } from "./types/type";
 import CreateColumnButton from "./CreateColumnButton";
 import ViewSelectButton from "./ViewSelectButton";
 import ToggleViewSidebarButton from "./ToolbarButton";
-import { SearchView } from "./SearchView";
 import CreateViewButton from "./CreateViewButton";
 
 const TableComponent: React.FC<TableComponentProps> = ({
@@ -789,13 +787,6 @@ const TableComponent: React.FC<TableComponentProps> = ({
             {/* Views List */}
             <div className="flex-1 overflow-y-auto p-2">
               <div>
-                <SearchView
-                  searchTerm={searchTerm}
-                  setSearchTerm={setSearchTerm}
-                  setIsSearching={setIsSearching}
-                  setShowSearchMessage={setShowSearchMessage}
-                />
-
                 {isLoadingViews ? (
                   <div className="flex items-center justify-center p-4">
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>

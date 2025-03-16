@@ -11,7 +11,9 @@ import {
   Share,
   History,
   ArrowLeftCircle,
+  Loader2,
 } from "lucide-react";
+import React from "react";
 
 interface BaseNavbarProps {
   baseName: string;
@@ -219,16 +221,16 @@ export function BaseNavbar({
 
           {/* Main navigation */}
           <nav className="hidden md:flex">
-            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+            <button className="rounded-3xl px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
               Data
             </button>
-            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+            <button className="rounded-3xl px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
               Automations
             </button>
-            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+            <button className="rounded-3xl px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
               Interfaces
             </button>
-            <button className="px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+            <button className="rounded-3xl px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
               Forms
             </button>
           </nav>
@@ -284,36 +286,48 @@ export function BaseNavbar({
 
       {/* Tab bar */}
       <div className="flex h-10 items-center bg-teal-700 text-white">
-        <div className="flex overflow-x-auto">
-          {visibleTables.map((table) => (
-            <div
-              key={table.id}
-              className={`flex min-w-[100px] cursor-pointer items-center ${
-                activeTableId === table.id
-                  ? "bg-white text-teal-800"
-                  : "bg-teal-700 text-white hover:bg-teal-600"
-              } px-3 py-2`}
-              onClick={() => onTableSelect && onTableSelect(table.id)}
-            >
-              <span className="mr-1 truncate">{table.name}</span>
-              <ChevronDown size={14} />
-            </div>
+        <div className="flex overflow-x-auto pl-4">
+          {visibleTables.map((table, index) => (
+            <React.Fragment key={table.id}>
+              {index > 0 && (
+                <div className="h-5 w-px self-center bg-teal-600/50"></div>
+              )}
+              <div
+                key={table.id}
+                className={`flex min-w-[100px] cursor-pointer items-center ${
+                  activeTableId === table.id
+                    ? "bg-white text-teal-800"
+                    : "bg-teal-700 text-white hover:bg-teal-600"
+                } px-3 py-2`}
+                onClick={() => onTableSelect && onTableSelect(table.id)}
+              >
+                <span className="mr-1 truncate">{table.name}</span>
+                {activeTableId === table.id && <ChevronDown size={14} />}
+              </div>
+            </React.Fragment>
           ))}
 
+          <div className="h-5 w-px self-center bg-teal-600/50"></div>
           <button
-            className="flex items-center bg-teal-700 px-3 py-2 text-white hover:bg-teal-600"
+            className="flex items-center border-teal-600 px-3 py-2 text-white hover:bg-teal-600"
             onClick={handleAddTable}
           >
-            <Plus size={16} className="mr-1" />
-            <span>{isCreatingTable ? "Creating..." : "Add or import"}</span>
+            {isCreatingTable ? (
+              <Loader2 size={16} className="mr-1 animate-spin" />
+            ) : (
+              <div className="flex items-center gap-2">
+                <Plus size={16} />
+                Add or import
+              </div>
+            )}
           </button>
         </div>
 
-        <div className="ml-auto mr-4 flex">
-          <button className="px-3 py-1 text-sm hover:bg-teal-600">
+        <div className="ml-auto flex">
+          <button className="px-4 py-2 text-sm text-white hover:bg-teal-600">
             Extensions
           </button>
-          <button className="flex items-center px-3 py-1 text-sm hover:bg-teal-600">
+          <button className="flex items-center px-4 py-2 text-sm text-white hover:bg-teal-600">
             Tools
             <ChevronDown size={14} className="ml-1" />
           </button>

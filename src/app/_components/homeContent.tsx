@@ -81,8 +81,8 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
   return (
     <div className="flex h-screen flex-col">
       <NavBar />
-      <div className="flex h-full w-full">
-        <div className="w-1/5">
+      <div className="my-2 flex h-full w-full">
+        <div className="w-1/4">
           <Sidebar />
         </div>
         <div className="w-full bg-white">
