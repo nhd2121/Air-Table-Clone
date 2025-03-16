@@ -82,7 +82,7 @@ export function SearchBarTable({
         type="text"
         value={searchTerm}
         onChange={handleSearchChange}
-        placeholder="Search in grid..."
+        placeholder="Search for cell..."
         className="block w-full rounded-md border border-gray-300 py-1.5 pl-10 pr-10 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
       {searchTerm && (

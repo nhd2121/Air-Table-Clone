@@ -753,220 +753,212 @@ const TableComponent: React.FC<TableComponentProps> = ({
       : 0;
 
   return (
-    <div className="relative flex h-full w-full">
-      {/* Views Sidebar */}
-      <div
-        ref={viewsSidebarRef}
-        className={`absolute inset-y-0 left-0 z-20 transition-all duration-300 ease-in-out ${
-          viewsSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-        style={{ width: "250px" }}
-      >
-        <div className="flex h-full flex-col border-r border-gray-200 bg-white shadow-md">
-          <button
-            onClick={toggleViewsSidebar}
-            className="flex items-center justify-between rounded border-b border-gray-200 p-3 text-gray-500 hover:bg-gray-100"
-          >
-            <h3 className="text-lg font-medium">Views</h3>
-            <ChevronLeft size={18} />
-          </button>
-
-          {/* Views List */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {isLoadingViews ? (
-              <div className="flex items-center justify-center p-4">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-              </div>
-            ) : (
-              <ul className="space-y-1">
-                {views.map((view) => (
-                  <li key={view.id}>
-                    {/* View Button */}
-                    <ViewSelectButton
-                      key={view.id}
-                      id={view.id}
-                      name={view.name}
-                      isActive={activeViewId === view.id}
-                      onSelect={handleViewSelect}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Create View Button */}
-          <div className="border-t border-gray-200 p-3">
-            <button
-              onClick={() => setShowCreateViewModal(true)}
-              className="flex w-full items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus size={16} className="mr-1" />
-              Create new view
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex h-full w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
-        {/* Toolbar */}
-        <div className="border-b border-gray-200 bg-white p-2">
-          <div className="flex items-center justify-between">
-            {/* Toggle view sidebar Components */}
-            <div className="flex items-center space-x-2">
-              <ToggleViewSidebarButton
-                isOpen={viewsSidebarOpen}
-                onClick={toggleViewsSidebar}
-                label="Views"
-              />
-            </div>
-
-            {/* Search Bar Component */}
-            <SearchBarTable
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              setIsSearching={setIsSearching}
-              setShowSearchMessage={setShowSearchMessage}
+    <div className="flex flex-col">
+      {/* Toolbar */}
+      <div className="border-b border-gray-200 bg-white p-2">
+        <div className="flex items-center justify-between">
+          {/* Toggle view sidebar Components */}
+          <div className="flex items-center space-x-2">
+            <ToggleViewSidebarButton
+              isOpen={viewsSidebarOpen}
+              onClick={toggleViewsSidebar}
+              label="Views"
             />
           </div>
-        </div>
 
-        {/* Search Results Status */}
-        {(isSearching || showSearchMessage) && (
-          <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
-            <div className="flex items-center">
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-              Searching for &quot;{searchTerm}&quot;...
+          {/* Search Bar Component */}
+          <SearchBarTable
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            setIsSearching={setIsSearching}
+            setShowSearchMessage={setShowSearchMessage}
+          />
+        </div>
+      </div>
+      <div className="relative flex h-full w-full">
+        {/* Views Sidebar */}
+        <div
+          ref={viewsSidebarRef}
+          className={`h-full border-r border-gray-200 bg-white shadow-md transition-all duration-300 ease-in-out ${
+            viewsSidebarOpen ? "w-64" : "w-0 overflow-hidden"
+          }`}
+        >
+          <div className="flex h-full flex-col">
+            {/* Views List */}
+            <div className="flex-1 overflow-y-auto p-2">
+              {isLoadingViews ? (
+                <div className="flex items-center justify-center p-4">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {views.map((view) => (
+                    <li key={view.id}>
+                      {/* View Button */}
+                      <ViewSelectButton
+                        key={view.id}
+                        id={view.id}
+                        name={view.name}
+                        isActive={activeViewId === view.id}
+                        onSelect={handleViewSelect}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Create View Button */}
+            <div className="border-t border-gray-200 p-3">
+              <button
+                onClick={() => setShowCreateViewModal(true)}
+                className="flex w-full items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus size={16} className="mr-1" />
+                Create new view
+              </button>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Search Results Count - Only show after search is complete */}
-        {searchTerm && !isSearching && !showSearchMessage && (
-          <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
-            Found {data.length} {data.length === 1 ? "result" : "results"} for
-            &quot;{searchTerm}&quot;
-          </div>
-        )}
-
-        {/* No Results Message */}
-        {searchTerm &&
-          !isSearching &&
-          !showSearchMessage &&
-          data.length === 0 && (
-            <div className="flex h-32 items-center justify-center bg-gray-50 text-gray-500">
-              No results found for &quot;{searchTerm}&quot;
+        {/* Main Content */}
+        <div className="flex h-full flex-1 flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+          {/* Search Results Status */}
+          {(isSearching || showSearchMessage) && (
+            <div className="bg-blue-50 px-4 py-2 text-sm text-blue-600">
+              <div className="flex items-center">
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+                Searching for &quot;{searchTerm}&quot;...
+              </div>
             </div>
           )}
 
-        {/* Make the table container fill the available width */}
-        <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
-          <table className="w-full table-fixed border-collapse">
-            <thead className="sticky top-0 z-10 bg-gray-50">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b border-gray-200">
-                  {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      style={{ width: header.column.getSize() }}
-                      className="border-r border-gray-200 px-2 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </th>
-                  ))}
-                  {/* Add an empty column as a spacer at the end */}
-                  <th className="w-10 border-none"></th>
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {paddingTop > 0 && (
-                <tr>
-                  <td
-                    style={{ height: `${paddingTop}px` }}
-                    colSpan={table.getAllColumns().length + 1}
-                  ></td>
-                </tr>
-              )}
-              {virtualRows.map((virtualRow) => {
-                const row = table.getRowModel().rows[virtualRow.index];
-                if (!row) return null;
+          {/* Search Results Count - Only show after search is complete */}
+          {searchTerm && !isSearching && !showSearchMessage && (
+            <div className="bg-gray-50 px-4 py-2 text-sm text-gray-600">
+              Found {data.length} {data.length === 1 ? "result" : "results"} for
+              &quot;{searchTerm}&quot;
+            </div>
+          )}
 
-                return (
-                  <tr
-                    key={row.id}
-                    className="border-b border-gray-200 hover:bg-blue-50"
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className="border-r border-gray-200 px-0 py-0 text-sm text-gray-800"
+          {/* No Results Message */}
+          {searchTerm &&
+            !isSearching &&
+            !showSearchMessage &&
+            data.length === 0 && (
+              <div className="flex h-32 items-center justify-center bg-gray-50 text-gray-500">
+                No results found for &quot;{searchTerm}&quot;
+              </div>
+            )}
+
+          {/* Make the table container fill the available width */}
+          <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
+            <table className="w-full table-fixed border-collapse">
+              <thead className="sticky top-0 z-10 bg-gray-50">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id} className="border-b border-gray-200">
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        style={{ width: header.column.getSize() }}
+                        className="border-r border-gray-200 px-2 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                       >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </th>
                     ))}
-                    {/* Add an empty cell at the end */}
-                    <td className="w-10 border-none"></td>
+                    {/* Add an empty column as a spacer at the end */}
+                    <th className="w-10 border-none"></th>
                   </tr>
-                );
-              })}
-              {paddingBottom > 0 && (
-                <tr>
-                  <td
-                    style={{ height: `${paddingBottom}px` }}
-                    colSpan={table.getAllColumns().length + 1}
-                  ></td>
-                </tr>
-              )}
-
-              {/* Add a row at the bottom with the "+" button to add new records */}
-              <tr className="border-b border-gray-200 hover:bg-gray-50">
-                <td className="border-r border-gray-200 p-0">
-                  <AddRecordButton handleAddRow={handleAddRow} />
-                </td>
-                {/* Empty cells for the rest of the row */}
-                {Array.from({ length: table.getAllColumns().length - 1 }).map(
-                  (_, i) => (
-                    <td key={i}></td>
-                  ),
+                ))}
+              </thead>
+              <tbody>
+                {paddingTop > 0 && (
+                  <tr>
+                    <td
+                      style={{ height: `${paddingTop}px` }}
+                      colSpan={table.getAllColumns().length + 1}
+                    ></td>
+                  </tr>
                 )}
-              </tr>
-            </tbody>
-          </table>
+                {virtualRows.map((virtualRow) => {
+                  const row = table.getRowModel().rows[virtualRow.index];
+                  if (!row) return null;
+
+                  return (
+                    <tr
+                      key={row.id}
+                      className="border-b border-gray-200 hover:bg-blue-50"
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="border-r border-gray-200 px-0 py-0 text-sm text-gray-800"
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      ))}
+                      {/* Add an empty cell at the end */}
+                      <td className="w-10 border-none"></td>
+                    </tr>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td
+                      style={{ height: `${paddingBottom}px` }}
+                      colSpan={table.getAllColumns().length + 1}
+                    ></td>
+                  </tr>
+                )}
+
+                {/* Add a row at the bottom with the "+" button to add new records */}
+                <tr className="border-b border-gray-200 hover:bg-gray-50">
+                  <td className="border-r border-gray-200 p-0">
+                    <AddRecordButton handleAddRow={handleAddRow} />
+                  </td>
+                  {/* Empty cells for the rest of the row */}
+                  {Array.from({ length: table.getAllColumns().length - 1 }).map(
+                    (_, i) => (
+                      <td key={i}></td>
+                    ),
+                  )}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer with row count */}
+          <RecordCountFooter count={data.length} searchTerm={searchTerm} />
+
+          {/* Add Row Button - add this fixed button */}
+          <AddRowsButton
+            handleAdd100Rows={handleAdd100Rows}
+            isAddingRows={isAddingRows}
+            isSearching={isSearching}
+          />
+
+          <AddColumnModal
+            isOpen={showAddColumnModal}
+            onClose={() => setShowAddColumnModal(false)}
+            onAddColumn={handleAddColumn}
+            isPending={addColumn.isPending}
+          />
+
+          <CreateViewModal
+            isOpen={showCreateViewModal}
+            onClose={() => setShowCreateViewModal(false)}
+            onCreateView={handleCreateView}
+            isPending={createView.isPending}
+          />
         </div>
-
-        {/* Footer with row count */}
-        <RecordCountFooter count={data.length} searchTerm={searchTerm} />
-
-        {/* Add Row Button - add this fixed button */}
-        <AddRowsButton
-          handleAdd100Rows={handleAdd100Rows}
-          isAddingRows={isAddingRows}
-          isSearching={isSearching}
-        />
-
-        <AddColumnModal
-          isOpen={showAddColumnModal}
-          onClose={() => setShowAddColumnModal(false)}
-          onAddColumn={handleAddColumn}
-          isPending={addColumn.isPending}
-        />
-
-        <CreateViewModal
-          isOpen={showCreateViewModal}
-          onClose={() => setShowCreateViewModal(false)}
-          onCreateView={handleCreateView}
-          isPending={createView.isPending}
-        />
       </div>
     </div>
   );
