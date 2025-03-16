@@ -309,7 +309,7 @@ export function BaseNavbar({
 
           <div className="h-5 w-px self-center bg-teal-600/50"></div>
           <button
-            className="flex items-center border-teal-600 px-3 py-2 text-white hover:bg-teal-600"
+            className="flex items-center px-3 py-2 text-white hover:text-gray-300"
             onClick={handleAddTable}
           >
             {isCreatingTable ? (

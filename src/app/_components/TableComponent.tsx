@@ -755,15 +755,16 @@ const TableComponent: React.FC<TableComponentProps> = ({
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="border-b border-gray-200 bg-white p-2">
+      <div className="border-b border-gray-200 bg-white p-1">
         <div className="flex items-center justify-between">
           {/* Toggle view sidebar Components */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2 space-x-2">
             <ToggleViewSidebarButton
               isOpen={viewsSidebarOpen}
               onClick={toggleViewsSidebar}
               label="Views"
             />
+            <div className="h-5 w-px self-center bg-black"></div>
           </div>
 
           {/* Search Bar Component */}
