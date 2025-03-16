@@ -32,6 +32,8 @@ import type { ColumnTypesState, TableComponentProps } from "./types/type";
 import CreateColumnButton from "./CreateColumnButton";
 import ViewSelectButton from "./ViewSelectButton";
 import ToggleViewSidebarButton from "./ToolbarButton";
+import { SearchView } from "./SearchView";
+import CreateViewButton from "./CreateViewButton";
 
 const TableComponent: React.FC<TableComponentProps> = ({
   tableId,
@@ -753,7 +755,7 @@ const TableComponent: React.FC<TableComponentProps> = ({
       : 0;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="border-b border-gray-200 bg-white p-2">
         <div className="flex items-center justify-between">
@@ -775,7 +777,7 @@ const TableComponent: React.FC<TableComponentProps> = ({
           />
         </div>
       </div>
-      <div className="relative flex h-full w-full">
+      <div className="relative flex h-[calc(100%-48px)] w-full overflow-hidden">
         {/* Views Sidebar */}
         <div
           ref={viewsSidebarRef}
@@ -786,37 +788,40 @@ const TableComponent: React.FC<TableComponentProps> = ({
           <div className="flex h-full flex-col">
             {/* Views List */}
             <div className="flex-1 overflow-y-auto p-2">
-              {isLoadingViews ? (
-                <div className="flex items-center justify-center p-4">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-                </div>
-              ) : (
-                <ul className="space-y-1">
-                  {views.map((view) => (
-                    <li key={view.id}>
-                      {/* View Button */}
-                      <ViewSelectButton
-                        key={view.id}
-                        id={view.id}
-                        name={view.name}
-                        isActive={activeViewId === view.id}
-                        onSelect={handleViewSelect}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div>
+                <SearchView
+                  searchTerm={searchTerm}
+                  setSearchTerm={setSearchTerm}
+                  setIsSearching={setIsSearching}
+                  setShowSearchMessage={setShowSearchMessage}
+                />
+
+                {isLoadingViews ? (
+                  <div className="flex items-center justify-center p-4">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+                  </div>
+                ) : (
+                  <ul className="space-y-1 pt-4">
+                    {views.map((view) => (
+                      <li key={view.id}>
+                        {/* View Button */}
+                        <ViewSelectButton
+                          key={view.id}
+                          id={view.id}
+                          name={view.name}
+                          isActive={activeViewId === view.id}
+                          onSelect={handleViewSelect}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             {/* Create View Button */}
             <div className="border-t border-gray-200 p-3">
-              <button
-                onClick={() => setShowCreateViewModal(true)}
-                className="flex w-full items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <Plus size={16} className="mr-1" />
-                Create new view
-              </button>
+              <CreateViewButton onClick={() => setShowCreateViewModal(true)} />
             </div>
           </div>
         </div>
@@ -852,7 +857,10 @@ const TableComponent: React.FC<TableComponentProps> = ({
             )}
 
           {/* Make the table container fill the available width */}
-          <div ref={tableContainerRef} className="w-full flex-1 overflow-auto">
+          <div
+            ref={tableContainerRef}
+            className="h-full w-full flex-1 overflow-auto"
+          >
             <table className="w-full table-fixed border-collapse">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 {table.getHeaderGroups().map((headerGroup) => (

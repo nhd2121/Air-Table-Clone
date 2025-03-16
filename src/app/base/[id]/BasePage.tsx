@@ -58,7 +58,7 @@ export default function BasePage({
   );
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <BaseNavbar
         baseName={base.name}
         baseId={base.id}
@@ -68,7 +68,7 @@ export default function BasePage({
         activeTableId={activeTableId}
       />
       {/* Make the table component take up full width and pass the onTableSelect callback */}
-      <div className="w-full flex-1">
+      <div className="h-[calc(100vh-104px)] w-full flex-1 overflow-hidden">
         <TableComponent
           tableId={activeTableId}
           key={activeTableId}

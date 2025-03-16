@@ -20,7 +20,7 @@ const RecordCountFooter: React.FC<RecordCountFooterProps> = ({
 
   return (
     <div
-      className={`${position} bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm ${className}`}
+      className={`${position} bottom-0 z-10 mt-auto border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm ${className}`}
     >
       {count} {isSearching ? "matching " : ""}
       {label}
