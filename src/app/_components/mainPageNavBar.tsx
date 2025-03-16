@@ -39,6 +39,8 @@ export function BaseNavbar({
   const [isOpen, setIsOpen] = useState(false);
 
   const utils = api.useUtils();
+  // Filter out view-linked tables for the tab bar
+  const visibleTables = tables.filter((table) => !table.isViewLinked);
 
   // Get initials from user name for avatar
   const getUserInitials = () => {
@@ -283,7 +285,7 @@ export function BaseNavbar({
       {/* Tab bar */}
       <div className="flex h-10 items-center bg-teal-700 text-white">
         <div className="flex overflow-x-auto">
-          {tables.map((table) => (
+          {visibleTables.map((table) => (
             <div
               key={table.id}
               className={`flex min-w-[100px] cursor-pointer items-center ${

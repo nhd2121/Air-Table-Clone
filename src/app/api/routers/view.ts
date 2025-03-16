@@ -152,6 +152,8 @@ export const viewRouter = createTRPCRouter({
                 name: newTableName,
                 description: `Generated table for view: ${input.name}`,
                 base: { connect: { id: sourceTable.baseId } },
+                // Add a flag to indicate this is a view-linked table
+                isViewLinked: true,
                 // Copy columns from source table
                 columns: {
                   create: sourceTable.columns.map((column) => ({

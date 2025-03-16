@@ -6,6 +6,7 @@ export type ColumnTypesState = Record<string, ColumnType>;
 export interface TableComponentProps {
   tableId: string;
   onTableSelect?: (tableId: string) => void;
+  setActiveTableId?;
 }
 
 export interface ViewWithTable extends View {

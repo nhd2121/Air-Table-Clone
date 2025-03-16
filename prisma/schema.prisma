@@ -46,6 +46,7 @@ model Table {
   id          String   @id @default(cuid())
   name        String
   description String?
+  isViewLinked Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

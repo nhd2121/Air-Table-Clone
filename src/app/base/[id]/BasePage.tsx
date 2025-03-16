@@ -27,6 +27,8 @@ export default function BasePage({
   // Maintain tables list in state so we can update it when new tables or views are added
   const [tables, setTables] = useState(initialTables);
 
+  const [displayedTableId, setDisplayedTableId] = useState(firstTableId);
+
   // Handle table change - this will be passed to both the navbar and the table component
   const handleTableChange = useCallback((tableId: string) => {
     setActiveTableId(tableId);
@@ -72,6 +74,8 @@ export default function BasePage({
           key={activeTableId}
           onTableSelect={handleTableChange}
           setActiveTableId={setActiveTableId}
+          displayedTableId={displayedTableId}
+          setDisplayedTableId={setDisplayedTableId}
         />
       </div>
     </div>

@@ -67,6 +67,8 @@ const TableComponent: React.FC<TableComponentProps> = ({
   // Track if we should show a message about performing a search
   const [showSearchMessage, setShowSearchMessage] = useState(false);
 
+  const [displayTableId, setDisplayTableId] = useState<string | null>(null);
+
   const viewsSidebarRef = useRef<HTMLDivElement>(null);
 
   // Access the utility functions for invalidating queries
@@ -193,9 +195,11 @@ const TableComponent: React.FC<TableComponentProps> = ({
   // Determine which query to use based on search term
   const shouldUseSearch = searchTerm.trim().length > 0;
 
+  const dataTableId = displayTableId ?? tableId;
+
   // Regular data query
   const regularDataQuery = api.table.getTableData.useQuery(
-    { tableId },
+    { tableId: dataTableId },
     {
       refetchOnWindowFocus: false,
       refetchOnMount: true,
@@ -259,6 +263,11 @@ const TableComponent: React.FC<TableComponentProps> = ({
     setViewsSidebarOpen(!viewsSidebarOpen);
   };
 
+  const loadLinkedTableData = (linkedTableId: string) => {
+    // Set a state variable to track which table data to show
+    setDisplayTableId(linkedTableId);
+  };
+
   // Handle selecting a view, it should switch to the corresponding table
   const handleViewSelect = (viewId: string) => {
     const selectedView = views.find((view) => view.id === viewId);
@@ -269,15 +278,7 @@ const TableComponent: React.FC<TableComponentProps> = ({
       // Check if there's a linked table in the view's config
       const viewConfig = selectedView.config as Record<string, any>;
       if (viewConfig?.linkedTableId) {
-        // Switch to the linked table associated with this view
-        setActiveTableId(viewConfig.linkedTableId);
-      } else if (
-        onTableSelect &&
-        selectedView.table &&
-        selectedView.table.id !== tableId
-      ) {
-        // Fall back to using the view's table ID if no linked table exists
-        onTableSelect(selectedView.table.id);
+        loadLinkedTableData(viewConfig.linkedTableId);
       }
     }
   };
