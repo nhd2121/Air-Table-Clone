@@ -24,6 +24,7 @@ import { SearchBarTable } from "./SearchBarTable";
 import LoadingTableData from "./LoadingTableData";
 import type { View } from "@/type/db";
 import type { TableRow } from "@/type/db";
+import type { ViewWithTable } from "./types/type";
 import AddRowsButton from "./AddRowsButton";
 import RecordCountFooter from "./RecordCountFooter";
 import AddRecordButton from "./AddRecordButton";
@@ -35,6 +36,7 @@ import ToggleViewSidebarButton from "./ToolbarButton";
 const TableComponent: React.FC<TableComponentProps> = ({
   tableId,
   onTableSelect,
+  setActiveTableId,
 }) => {
   // State to track data
   const [data, setData] = useState<TableRow[]>([]);
@@ -54,7 +56,7 @@ const TableComponent: React.FC<TableComponentProps> = ({
 
   // Views sidebar state
   const [viewsSidebarOpen, setViewsSidebarOpen] = useState(false);
-  const [views, setViews] = useState<View[]>([]);
+  const [views, setViews] = useState<ViewWithTable[]>([]);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [showCreateViewModal, setShowCreateViewModal] = useState(false);
 
@@ -105,12 +107,31 @@ const TableComponent: React.FC<TableComponentProps> = ({
     if (viewsData) {
       // Filter views to only include those for the current table
       const tableViews = viewsData.filter((view) => view.tableId === tableId);
-      setViews(tableViews as View[]);
+
+      // Transform to add linkedTableId as a property for easier access
+      const viewsWithLinkedTables = tableViews.map((view) => {
+        const config = view.config as Record<string, any>;
+        return {
+          ...view,
+          linkedTableId: config?.linkedTableId,
+        };
+      });
+
+      setViews(viewsWithLinkedTables as ViewWithTable[]);
 
       // If no active view is set but we have views, set the first one as active
-      if (!activeViewId && tableViews.length > 0) {
-        if (tableViews[0]) {
-          setActiveViewId(tableViews[0].id);
+      if (!activeViewId && viewsWithLinkedTables.length > 0) {
+        if (viewsWithLinkedTables[0]) {
+          setActiveViewId(viewsWithLinkedTables[0].id);
+
+          // If the first view has a linked table, set it as active
+          const firstViewConfig = viewsWithLinkedTables[0].config as Record<
+            string,
+            any
+          >;
+          if (firstViewConfig?.linkedTableId) {
+            setActiveTableId(firstViewConfig.linkedTableId);
+          }
         }
       }
     }
@@ -119,11 +140,27 @@ const TableComponent: React.FC<TableComponentProps> = ({
   // Create view mutation - handle the new response structure
   const createView = api.view.create.useMutation({
     onSuccess: (newView) => {
-      // Update local views state
-      setViews((prevViews) => [...prevViews, newView as View]);
+      // Extract the linkedTable from the result if it exists
+      const { linkedTable, ...viewData } = newView as any;
+
+      // Update local views state with the linked table information
+      const viewWithTable: ViewWithTable = {
+        ...viewData,
+        config: {
+          ...viewData.config,
+          linkedTableId: linkedTable?.id,
+        },
+      };
+
+      setViews((prevViews) => [...prevViews, viewWithTable]);
 
       // Set the new view as active
-      setActiveViewId(newView.id);
+      setActiveViewId(viewData.id);
+
+      // Switch to the new linked table if it exists
+      if (linkedTable) {
+        setActiveTableId(linkedTable.id);
+      }
 
       // Close modal and reset form
       setShowCreateViewModal(false);
@@ -229,12 +266,17 @@ const TableComponent: React.FC<TableComponentProps> = ({
       // Set the active view
       setActiveViewId(viewId);
 
-      // Switch to the table associated with this view
-      if (
+      // Check if there's a linked table in the view's config
+      const viewConfig = selectedView.config as Record<string, any>;
+      if (viewConfig?.linkedTableId) {
+        // Switch to the linked table associated with this view
+        setActiveTableId(viewConfig.linkedTableId);
+      } else if (
         onTableSelect &&
         selectedView.table &&
         selectedView.table.id !== tableId
       ) {
+        // Fall back to using the view's table ID if no linked table exists
         onTableSelect(selectedView.table.id);
       }
     }

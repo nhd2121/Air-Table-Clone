@@ -71,6 +71,7 @@ export default function BasePage({
           tableId={activeTableId}
           key={activeTableId}
           onTableSelect={handleTableChange}
+          setActiveTableId={setActiveTableId}
         />
       </div>
     </div>

@@ -13,4 +13,5 @@ export interface ViewWithTable extends View {
     id: string;
     name: string;
   };
+  linkedTableId?: string;
 }

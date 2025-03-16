@@ -62,6 +62,7 @@ export interface ViewConfig {
     desc: boolean;
   }>;
   hiddenColumns?: string[];
+  linkedTableId?: string;
 }
 
 // Define type for View
