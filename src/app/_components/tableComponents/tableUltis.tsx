@@ -5,6 +5,12 @@ import { createColumnHelper } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import type { Column } from "@/type/db";
 
+/**
+ * Generates table columns with proper configuration for editing
+ *
+ * @param tableColumns The column definitions from the database
+ * @returns Array of column definitions for the table component
+ */
 export function generateTableColumns(tableColumns: Column[]) {
   const columnHelper = createColumnHelper<any>();
 
@@ -17,7 +23,40 @@ export function generateTableColumns(tableColumns: Column[]) {
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </div>
       ),
+      // Let the DataTable component handle the cell rendering for editing
       cell: (info) => info.getValue() || "",
+      // Store original column type for validation
+      meta: {
+        type: column.type,
+      },
     }),
   );
+}
+
+/**
+ * Validates cell value based on column type
+ *
+ * @param value The value to validate
+ * @param type The column type (TEXT or NUMBER)
+ * @returns Whether the value is valid for the column type
+ */
+export function validateCellValue(value: string, type: string): boolean {
+  if (type === "NUMBER") {
+    return !isNaN(Number(value));
+  }
+  return true; // TEXT type accepts anything
+}
+
+/**
+ * Formats cell value based on column type
+ *
+ * @param value The value to format
+ * @param type The column type
+ * @returns The formatted value
+ */
+export function formatCellValue(value: string, type: string): string {
+  if (type === "NUMBER" && value && !isNaN(Number(value))) {
+    return Number(value).toString();
+  }
+  return value;
 }

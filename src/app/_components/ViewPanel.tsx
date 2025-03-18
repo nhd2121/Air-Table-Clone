@@ -8,7 +8,6 @@
 import { useMemo, useState } from "react";
 import { api } from "@/trpc/react";
 import { CreateViewModal } from "@/app/_components/CreateViewModal";
-import type { View } from "@/type/db";
 import { generateTableColumns } from "./tableComponents/tableUltis";
 import { ViewsSidebar } from "./tableComponents/viewSideBar";
 import { TableLoadingState } from "./tableComponents/tableLoadingState";
