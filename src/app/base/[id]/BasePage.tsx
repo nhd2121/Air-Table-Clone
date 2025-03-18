@@ -4,99 +4,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-// "use client";
-
-// import { BaseNavbar } from "@/app/_components/mainPageNavBar";
-// import TableComponent from "@/app/_components/TableComponent";
-// import { useState, useCallback } from "react";
-// import type { Table } from "@/type/db";
-// import { api } from "@/trpc/react";
-
-// interface BasePageProps {
-//   base: {
-//     id: string;
-//     name: string;
-//     description?: string | null;
-//   };
-//   tables: Table[];
-//   firstTableId: string;
-// }
-
-// export default function BasePage({
-//   base,
-//   tables: initialTables,
-//   firstTableId,
-// }: BasePageProps) {
-//   // State to track the currently selected table
-//   const [activeTableId, setActiveTableId] = useState(firstTableId);
-
-//   // Maintain tables list in state so we can update it when new tables or views are added
-//   const [tables, setTables] = useState(initialTables);
-
-//   const [displayedTableId, setDisplayedTableId] = useState(firstTableId);
-
-//   // Handle table change - this will be passed to both the navbar and the table component
-//   const handleTableChange = useCallback((tableId: string) => {
-//     setActiveTableId(tableId);
-//   }, []);
-
-//   // Handle table creation from the navbar
-//   const handleTableCreated = useCallback((newTable: Table) => {
-//     // Add the new table to our state
-//     setTables((currentTables) => [...currentTables, newTable]);
-//     // Select the newly created table
-//     setActiveTableId(newTable.id);
-//   }, []);
-
-//   // Query to get all tables for the base to ensure our list stays up to date
-//   api.table.getTablesForBase.useQuery(
-//     { baseId: base.id },
-//     {
-//       enabled: !!base.id,
-//       refetchOnWindowFocus: true,
-//       onSuccess: (fetchedTables) => {
-//         // Update tables list if it doesn't match what's in the database
-//         if (fetchedTables.length !== tables.length) {
-//           setTables(fetchedTables);
-//         }
-//       },
-//     },
-//   );
-
-//   return (
-//     <div className="flex h-screen flex-col overflow-hidden">
-//       <BaseNavbar
-//         baseName={base.name}
-//         baseId={base.id}
-//         tables={tables}
-//         onTableSelect={handleTableChange}
-//         onTableCreated={handleTableCreated}
-//         activeTableId={activeTableId}
-//       />
-//       {/* Make the table component take up full width and pass the onTableSelect callback */}
-//       <div className="h-[calc(100vh-104px)] w-full flex-1 overflow-hidden">
-//         <TableComponent
-//           tableId={activeTableId}
-//           key={activeTableId}
-//           onTableSelect={handleTableChange}
-//           setActiveTableId={setActiveTableId}
-//           displayedTableId={displayedTableId}
-//           setDisplayedTableId={setDisplayedTableId}
-//         />
-//       </div>
-//     </div>
-//   );
-// }
-
 "use client";
 
-"use client";
-
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
 import NavBar from "@/app/_components/navBar";
-// import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Plus, Settings } from "lucide-react";
 import { ViewPanel } from "@/app/_components/ViewPanel";
 
@@ -131,6 +44,20 @@ export function BasePage({ baseId }: BasePageProps) {
       },
     },
   );
+
+  useEffect(() => {
+    if (base?.tabs && base.tabs.length > 0 && !activeTabId) {
+      // Select the first tab
+      const firstTab = base.tabs[0];
+      setActiveTabId(firstTab.id);
+
+      // Select the default or first view in that tab when navigating to base page
+      if (firstTab.views && firstTab.views.length > 0) {
+        const defaultView = firstTab.views.find((view) => view.isDefault);
+        setActiveViewId(defaultView?.id || firstTab.views[0].id);
+      }
+    }
+  }, [base, activeTabId]);
 
   const utils = api.useUtils();
 
@@ -192,7 +119,6 @@ export function BasePage({ baseId }: BasePageProps) {
   if (isLoading) {
     return (
       <div className="flex h-screen flex-col">
-        <NavBar />
         <div className="flex h-full items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         </div>
@@ -203,7 +129,6 @@ export function BasePage({ baseId }: BasePageProps) {
   if (!base) {
     return (
       <div className="flex h-screen flex-col">
-        <NavBar />
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
             <p className="text-lg text-gray-600">Base not found</p>
@@ -221,8 +146,6 @@ export function BasePage({ baseId }: BasePageProps) {
 
   return (
     <div className="flex h-screen flex-col">
-      <NavBar />
-
       <div className="flex items-center justify-between border-b bg-white px-4 py-2">
         <div className="flex items-center">
           <h1 className="mr-4 text-xl font-bold">{base.name}</h1>
