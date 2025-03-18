@@ -25,13 +25,41 @@ CREATE TABLE "Base" (
 );
 
 -- CreateTable
+CREATE TABLE "Tab" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "position" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "baseId" TEXT NOT NULL,
+
+    CONSTRAINT "Tab_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "View" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "config" JSONB NOT NULL DEFAULT '{}',
+    "position" INTEGER NOT NULL DEFAULT 0,
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "tabId" TEXT NOT NULL,
+    "tableId" TEXT NOT NULL,
+
+    CONSTRAINT "View_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Table" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
+    "isViewLinked" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "baseId" TEXT NOT NULL,
 
     CONSTRAINT "Table_pkey" PRIMARY KEY ("id")
 );
@@ -41,6 +69,7 @@ CREATE TABLE "Column" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" "ColumnType" NOT NULL DEFAULT 'TEXT',
+    "position" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "tableId" TEXT NOT NULL,
@@ -51,6 +80,7 @@ CREATE TABLE "Column" (
 -- CreateTable
 CREATE TABLE "Row" (
     "id" TEXT NOT NULL,
+    "position" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "tableId" TEXT NOT NULL,
@@ -67,18 +97,6 @@ CREATE TABLE "Cell" (
     "rowId" TEXT NOT NULL,
 
     CONSTRAINT "Cell_pkey" PRIMARY KEY ("columnId","rowId")
-);
-
--- CreateTable
-CREATE TABLE "View" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "config" JSONB NOT NULL DEFAULT '{}',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "tableId" TEXT NOT NULL,
-
-    CONSTRAINT "View_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -135,7 +153,13 @@ CREATE INDEX "Post_name_idx" ON "Post"("name");
 CREATE INDEX "Base_ownerId_idx" ON "Base"("ownerId");
 
 -- CreateIndex
-CREATE INDEX "Table_baseId_idx" ON "Table"("baseId");
+CREATE INDEX "Tab_baseId_idx" ON "Tab"("baseId");
+
+-- CreateIndex
+CREATE INDEX "View_tabId_idx" ON "View"("tabId");
+
+-- CreateIndex
+CREATE INDEX "View_tableId_idx" ON "View"("tableId");
 
 -- CreateIndex
 CREATE INDEX "Column_tableId_idx" ON "Column"("tableId");
@@ -148,9 +172,6 @@ CREATE INDEX "Cell_columnId_idx" ON "Cell"("columnId");
 
 -- CreateIndex
 CREATE INDEX "Cell_rowId_idx" ON "Cell"("rowId");
-
--- CreateIndex
-CREATE INDEX "View_tableId_idx" ON "View"("tableId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Account_provider_providerAccountId_key" ON "Account"("provider", "providerAccountId");
@@ -174,7 +195,13 @@ ALTER TABLE "Post" ADD CONSTRAINT "Post_createdById_fkey" FOREIGN KEY ("createdB
 ALTER TABLE "Base" ADD CONSTRAINT "Base_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Table" ADD CONSTRAINT "Table_baseId_fkey" FOREIGN KEY ("baseId") REFERENCES "Base"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Tab" ADD CONSTRAINT "Tab_baseId_fkey" FOREIGN KEY ("baseId") REFERENCES "Base"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "View" ADD CONSTRAINT "View_tabId_fkey" FOREIGN KEY ("tabId") REFERENCES "Tab"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "View" ADD CONSTRAINT "View_tableId_fkey" FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Column" ADD CONSTRAINT "Column_tableId_fkey" FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -193,6 +220,3 @@ ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId"
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "View" ADD CONSTRAINT "View_tableId_fkey" FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE CASCADE ON UPDATE CASCADE;

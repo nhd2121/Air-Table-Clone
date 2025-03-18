@@ -26,31 +26,60 @@ model Base {
   updatedAt   DateTime @updatedAt
   ownerId     String
   owner       User     @relation("UserBases", fields: [ownerId], references: [id])
-  tables      Table[]
+  tabs        Tab[]
 
   @@index([ownerId])
+}
+
+// New Tab model
+model Tab {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  baseId      String
+  base        Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  views       View[]   // Tab has many Views
+
+  @@index([baseId])
+}
+
+model View {
+  id        String   @id @default(cuid())
+  name      String
+  config    Json     @default("{}")
+  position  Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tabId     String
+  tab       Tab      @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  tableId   String   // Each View is associated with a Table
+  table     Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@index([tabId])
+  @@index([tableId])
 }
 
 model Table {
   id           String   @id @default(cuid())
   name         String
   description  String?
+  isViewLinked Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  baseId       String
-  isViewLinked Boolean  @default(false)
   columns      Column[]
   rows         Row[]
-  base         Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
-  views        View[]
-
-  @@index([baseId])
+  views        View[]   // Table has many Views
 }
 
 model Column {
   id        String     @id @default(cuid())
   name      String
   type      ColumnType @default(TEXT)
+  position  Int        @default(0)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   tableId   String
@@ -62,6 +91,7 @@ model Column {
 
 model Row {
   id        String   @id @default(cuid())
+  position  Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   tableId   String
@@ -83,18 +113,6 @@ model Cell {
   @@id([columnId, rowId])
   @@index([columnId])
   @@index([rowId])
-}
-
-model View {
-  id        String   @id @default(cuid())
-  name      String
-  config    Json     @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tableId   String
-  table     Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
-
-  @@index([tableId])
 }
 
 model Account {
