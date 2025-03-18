@@ -20,7 +20,13 @@ import {
 
 interface ViewPanelProps {
   tabId: string;
-  views: View[];
+  views: Array<{
+    id: string;
+    name: string;
+    position: number;
+    isDefault: boolean;
+    tableId: string;
+  }>;
   activeViewId: string;
   onViewChange: (viewId: string) => void;
 }

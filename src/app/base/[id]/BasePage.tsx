@@ -9,7 +9,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
-import NavBar from "@/app/_components/navBar";
 import { Loader2, Plus, Settings } from "lucide-react";
 import { ViewPanel } from "@/app/_components/ViewPanel";
 
