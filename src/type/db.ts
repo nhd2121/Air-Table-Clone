@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/consistent-indexed-object-style */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Define type for Column
 export interface Column {
   id: string;
   name: string;
   type: "TEXT" | "NUMBER";
+  position: number;
   createdAt: Date;
   updatedAt: Date;
   tableId: string;
@@ -14,18 +16,21 @@ export interface Table {
   id: string;
   name: string;
   description?: string | null;
+  isViewLinked: boolean;
   createdAt: Date;
   updatedAt: Date;
-  baseId: string;
   columns?: Column[];
+  rows?: Row[];
 }
 
 // Define type for Row
 export interface Row {
   id: string;
+  position: number;
   createdAt: Date;
   updatedAt: Date;
   tableId: string;
+  cells?: Cell[];
 }
 
 // Define type for Cell
@@ -37,7 +42,19 @@ export interface Cell {
   rowId: string;
 }
 
-// Define type for Base
+// Define type for Tab
+export interface Tab {
+  id: string;
+  name: string;
+  description?: string | null;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+  baseId: string;
+  views?: View[];
+}
+
+// Define type for Base with tabs
 export interface Base {
   id: string;
   name: string;
@@ -45,13 +62,16 @@ export interface Base {
   createdAt: Date;
   updatedAt: Date;
   ownerId: string;
-  tables?: Table[];
+  tabs?: Tab[];
 }
 
 // Define a type for the table row that appears in the UI
 export interface TableRow {
   id: string;
-  [key: string]: string | null;
+  position: number;
+  cells: {
+    [columnId: string]: string | null;
+  };
 }
 
 // Define type for ViewConfig
@@ -62,21 +82,38 @@ export interface ViewConfig {
     desc: boolean;
   }>;
   hiddenColumns?: string[];
-  linkedTableId?: string;
 }
 
-// Define type for View
+// Define type for View (linked to Tab and Table)
 export interface View {
   id: string;
   name: string;
+  position: number;
+  isDefault: boolean;
   config: ViewConfig;
   createdAt: Date;
   updatedAt: Date;
+  tabId: string; // Linked to Tab
   tableId: string;
-  // Add the table relationship
+  // Relationships
+  tab?: {
+    id: string;
+    name: string;
+    baseId: string;
+  };
   table?: {
     id: string;
     name: string;
-    baseId?: string;
+    columns?: Column[];
+    formattedRows?: TableRow[];
   };
+}
+
+// Helper type for formatted table data
+export interface FormattedTableData {
+  id: string;
+  name: string;
+  description?: string | null;
+  columns: Column[];
+  formattedRows: TableRow[];
 }
