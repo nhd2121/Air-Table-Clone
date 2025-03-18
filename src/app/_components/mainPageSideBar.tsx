@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CreateBaseModal } from "./createBaseModal";
+import { CreateBaseModal } from "./tableComponents/createBaseModal";
 import {
   BookOpen,
   ChevronRight,

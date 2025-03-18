@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/trpc/react";
-import { CreateViewModal } from "@/app/_components/CreateViewModal";
+import { CreateViewModal } from "@/app/_components/tableComponents/CreateViewModal";
 import { generateTableColumns } from "./tableComponents/tableUltis";
 import { ViewsSidebar } from "./tableComponents/viewSideBar";
 import { TableLoadingState } from "./tableComponents/tableLoadingState";
@@ -141,7 +141,7 @@ export function ViewPanel({
 
   return (
     <div className="flex h-full w-full">
-      {/* Sidebar with views */}
+      {/* Sidebar with views - fixed height, non-scrollable */}
       <ViewsSidebar
         views={displayViews}
         activeViewId={activeViewId}
@@ -149,22 +149,28 @@ export function ViewPanel({
         onCreateView={() => setShowCreateViewModal(true)}
       />
 
-      {/* Main content area - Table display */}
-      <div className="flex-1 overflow-auto">
+      {/* Main content area - Table display with scrollable content area */}
+      <div className="flex flex-1 flex-col overflow-hidden">
         {isLoading ? (
           <TableLoadingState />
         ) : tableData ? (
-          <div className="p-4">
-            <h2 className="mb-4 text-xl font-semibold">{viewData?.name}</h2>
+          <div className="flex h-full flex-col">
+            {/* Header area - fixed, not scrollable */}
+            <div className="border-b border-gray-200 bg-white p-4">
+              <h2 className="text-xl font-semibold">{viewData?.name}</h2>
+            </div>
 
-            <DataTable
-              data={tableData.formattedRows || []}
-              columns={columns}
-              tableId={tableData.id}
-              onAddRow={handleAddRow}
-              onAddColumn={() => setShowAddColumnModal(true)}
-              isAddingRow={addRow.isPending}
-            />
+            {/* Table container - scrollable */}
+            <div className="flex-1 overflow-auto p-4">
+              <DataTable
+                data={tableData.formattedRows || []}
+                columns={columns}
+                tableId={tableData.id}
+                onAddRow={handleAddRow}
+                onAddColumn={() => setShowAddColumnModal(true)}
+                isAddingRow={addRow.isPending}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex h-full items-center justify-center">

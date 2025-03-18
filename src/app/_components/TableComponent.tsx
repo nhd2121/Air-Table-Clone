@@ -17,7 +17,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/trpc/react";
 import { AddColumnModal, type ColumnType } from "./AddColumnModal";
-import { CreateViewModal } from "./CreateViewModal";
+import { CreateViewModal } from "./tableComponents/CreateViewModal";
 import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
 import { SearchBarTable } from "./SearchBarTable";
 import LoadingTableData from "./LoadingTableData";
@@ -29,9 +29,9 @@ import RecordCountFooter from "./RecordCountFooter";
 import AddRecordButton from "./AddRecordButton";
 import type { ColumnTypesState, TableComponentProps } from "./types/type";
 import CreateColumnButton from "./CreateColumnButton";
-import ViewSelectButton from "./ViewSelectButton";
+import ViewSelectButton from "./tableComponents/ViewSelectButton";
 import ToggleViewSidebarButton from "./ToolbarButton";
-import CreateViewButton from "./CreateViewButton";
+import CreateViewButton from "./tableComponents/CreateViewButton";
 
 const TableComponent: React.FC<TableComponentProps> = ({
   tableId,
