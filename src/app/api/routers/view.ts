@@ -1,90 +1,194 @@
-/* eslint-disable @typescript-eslint/prefer-optional-chain */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-// Modified view router to create a new table when creating a view
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
-import { Prisma } from "@prisma/client";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { ColumnType } from "@prisma/client";
+import { nanoid } from "nanoid";
 import { faker } from "@faker-js/faker";
 
-// Define the ViewConfig schema for validation
-const ViewConfigSchema = z.object({
-  filters: z.record(z.any()).optional(),
-  sorts: z
-    .array(
-      z.object({
-        id: z.string(),
-        desc: z.boolean(),
-      }),
-    )
-    .optional(),
-  hiddenColumns: z.array(z.string()).optional(),
+// Schema validation for View creation
+const createViewSchema = z.object({
+  name: z.string().min(1).max(255),
+  tabId: z.string(),
+  position: z.number().optional(),
+  isDefault: z.boolean().optional().default(false),
 });
 
+// Helper to generate fake data cells for a new table
+const generateFakeCells = (
+  columns: { id: string; type: ColumnType; name: string }[],
+  rowIds: string[],
+) => {
+  const cells = [];
+
+  const statusOptions = [
+    "To Do",
+    "In Progress",
+    "Done",
+    "Blocked",
+    "In Review",
+  ];
+
+  for (const rowId of rowIds) {
+    for (const column of columns) {
+      let value;
+
+      // Generate appropriate fake data based on column name and type
+      if (column.type === ColumnType.NUMBER) {
+        if (column.name.toLowerCase().includes("priority")) {
+          value = faker.number.int({ min: 1, max: 5 }).toString();
+        } else if (
+          column.name.toLowerCase().includes("price") ||
+          column.name.toLowerCase().includes("cost")
+        ) {
+          value = faker.commerce.price({ min: 10, max: 1000 }).toString();
+        } else if (column.name.toLowerCase().includes("age")) {
+          value = faker.number.int({ min: 18, max: 65 }).toString();
+        } else {
+          value = faker.number.int({ min: 1, max: 100 }).toString();
+        }
+      } else {
+        // TEXT type
+        if (column.name.toLowerCase().includes("title")) {
+          value = faker.lorem.sentence({ min: 2, max: 5 });
+        } else if (column.name.toLowerCase().includes("name")) {
+          value = faker.person.fullName();
+        } else if (column.name.toLowerCase().includes("email")) {
+          value = faker.internet.email();
+        } else if (column.name.toLowerCase().includes("phone")) {
+          value = faker.phone.number();
+        } else if (column.name.toLowerCase().includes("address")) {
+          value = faker.location.streetAddress();
+        } else if (column.name.toLowerCase().includes("company")) {
+          value = faker.company.name();
+        } else if (column.name.toLowerCase().includes("status")) {
+          value =
+            statusOptions[Math.floor(Math.random() * statusOptions.length)];
+        } else if (column.name.toLowerCase().includes("description")) {
+          value = faker.lorem.paragraph();
+        } else if (column.name.toLowerCase().includes("date")) {
+          value = faker.date.recent().toISOString().split("T")[0];
+        } else {
+          value = faker.lorem.words({ min: 1, max: 3 });
+        }
+      }
+
+      cells.push({
+        rowId,
+        columnId: column.id,
+        value,
+      });
+    }
+  }
+
+  return cells;
+};
+
 export const viewRouter = createTRPCRouter({
-  // Get all views for a table
-  getViewsForTable: protectedProcedure
-    .input(z.object({ tableId: z.string() }))
+  // Get all views belonging to a specific tab
+  getViewsForTab: protectedProcedure
+    .input(z.object({ tabId: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Verify user has access to the table
-      const table = await ctx.db.table.findFirst({
+      const userId = ctx.session.user.id;
+
+      // First check if the tab belongs to the user
+      const tab = await ctx.db.tab.findFirst({
         where: {
-          id: input.tableId,
+          id: input.tabId,
           base: {
-            ownerId: ctx.session.user.id,
+            ownerId: userId,
           },
         },
-        select: { id: true },
       });
 
-      if (!table) {
+      if (!tab) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Table not found or you don't have access",
+          message: "Tab not found or you don't have permission to access it",
         });
       }
 
-      // Get views specifically for this table only, not the entire base
-      return ctx.db.view.findMany({
+      // Get all views for the tab with optimized query
+      const views = await ctx.db.view.findMany({
         where: {
-          tableId: input.tableId,
+          tabId: input.tabId,
         },
-        include: {
-          table: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
+          position: true,
+          isDefault: true,
+          tableId: true,
+          createdAt: true,
+          updatedAt: true,
         },
         orderBy: {
-          createdAt: "asc",
+          position: "asc",
         },
       });
+
+      return views;
     }),
 
-  // Get a specific view
+  // Get a specific view with its associated table data
   getView: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Verify user has access to the view
+      const userId = ctx.session.user.id;
+
+      // Check if the view exists and belongs to the user
       const view = await ctx.db.view.findFirst({
         where: {
           id: input.id,
-          table: {
+          tab: {
             base: {
-              ownerId: ctx.session.user.id,
+              ownerId: userId,
             },
           },
         },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          config: true,
+          position: true,
+          isDefault: true,
+          createdAt: true,
+          updatedAt: true,
+          tabId: true,
+          tableId: true,
           table: {
             select: {
               id: true,
               name: true,
-              baseId: true,
+              columns: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  position: true,
+                },
+                orderBy: {
+                  position: "asc",
+                },
+              },
+              rows: {
+                select: {
+                  id: true,
+                  position: true,
+                  cells: {
+                    select: {
+                      columnId: true,
+                      value: true,
+                    },
+                  },
+                },
+                orderBy: {
+                  position: "asc",
+                },
+              },
             },
           },
         },
@@ -93,286 +197,191 @@ export const viewRouter = createTRPCRouter({
       if (!view) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "View not found or you don't have access",
+          message: "View not found or you don't have permission to access it",
         });
       }
 
-      return view;
+      // Transform the data to a more convenient format for front-end
+      const formattedRows = view.table.rows.map((row) => {
+        const cells = {};
+        row.cells.forEach((cell) => {
+          cells[cell.columnId] = cell.value;
+        });
+
+        return {
+          id: row.id,
+          position: row.position,
+          cells,
+        };
+      });
+
+      return {
+        ...view,
+        table: {
+          ...view.table,
+          formattedRows,
+        },
+      };
     }),
 
-  // Create a new view with a new table - UPDATED LOGIC
+  // Create a new view with a new table and fake data
   create: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        name: z.string().min(1),
-        config: ViewConfigSchema.optional().default({}),
-      }),
-    )
+    .input(createViewSchema)
     .mutation(async ({ ctx, input }) => {
-      // Extend timeout for this operation
-      ctx.headers.set("request-timeout", "30000");
+      const userId = ctx.session.user.id;
 
-      try {
-        // Use a transaction to ensure all operations complete together
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Verify user has access to the table
-            const sourceTable = await tx.table.findFirst({
-              where: {
-                id: input.tableId,
-                base: {
-                  ownerId: ctx.session.user.id,
-                },
-              },
-              select: {
-                id: true,
-                name: true,
-                baseId: true,
-                columns: true,
-              },
-            });
-
-            if (!sourceTable) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Table not found or you don't have access",
-              });
-            }
-
-            // Generate a unique suffix for the new table name
-            const viewSuffix = input.name
-              .replace(/[^a-zA-Z0-9]/g, "")
-              .substring(0, 5);
-            const newTableName = `${sourceTable.name}_View_${viewSuffix}`;
-
-            // 1. Create a new table with similar structure as the source table
-            const newTable = await tx.table.create({
-              data: {
-                name: newTableName,
-                description: `Generated table for view: ${input.name}`,
-                base: { connect: { id: sourceTable.baseId } },
-                // Add a flag to indicate this is a view-linked table
-                isViewLinked: true,
-                // Copy columns from source table
-                columns: {
-                  create: sourceTable.columns.map((column) => ({
-                    name: column.name,
-                    type: column.type,
-                  })),
-                },
-              },
-              include: {
-                columns: true,
-              },
-            });
-
-            // 2. Create rows with fake data for the new table
-            // Generate 5 rows of fake data
-            for (let i = 0; i < 5; i++) {
-              // Create a row
-              const row = await tx.row.create({
-                data: {
-                  table: { connect: { id: newTable.id } },
-                },
-              });
-
-              // Create cells for each column
-              for (const column of newTable.columns) {
-                let value = "";
-
-                // Generate appropriate data based on column name or type
-                if (column.name.toLowerCase().includes("name")) {
-                  value = faker.person.fullName();
-                } else if (column.name.toLowerCase().includes("email")) {
-                  value = faker.internet.email();
-                } else if (column.name.toLowerCase().includes("phone")) {
-                  value = faker.phone.number();
-                } else if (
-                  column.name.toLowerCase().includes("note") ||
-                  column.name.toLowerCase().includes("notes")
-                ) {
-                  value = faker.lorem.sentence();
-                } else if (column.type === "NUMBER") {
-                  value = faker.number.int({ min: 1, max: 1000 }).toString();
-                } else {
-                  value = faker.lorem.words(3);
-                }
-
-                await tx.cell.create({
-                  data: {
-                    columnId: column.id,
-                    rowId: row.id,
-                    value,
-                  },
-                });
-              }
-            }
-
-            // 3. Create a view that links to the original table, but stores reference to the new table in config
-            const view = await tx.view.create({
-              data: {
-                name: input.name,
-                config: {
-                  ...(input.config || {}),
-                  linkedTableId: newTable.id, // Store the linked table ID in the config
-                },
-                table: {
-                  connect: { id: sourceTable.id }, // Still connect to original table
-                },
-              },
-              include: {
-                table: {
-                  select: {
-                    id: true,
-                    name: true,
-                    baseId: true,
-                  },
-                },
-              },
-            });
-
-            // Return the view with its linked table information
-            return {
-              ...view,
-              linkedTable: newTable,
-            };
+      // Check if the tab exists and belongs to the user
+      const tab = await ctx.db.tab.findFirst({
+        where: {
+          id: input.tabId,
+          base: {
+            ownerId: userId,
           },
-          {
-            timeout: 30000,
-            maxWait: 5000,
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-          },
-        );
-      } catch (error) {
-        console.error("Error creating view with table:", error);
+        },
+      });
 
-        if (error instanceof TRPCError) {
-          throw error;
+      if (!tab) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "Tab not found or you don't have permission to create a view in it",
+        });
+      }
+
+      // Get the highest current position for proper ordering
+      const highestPositionView = await ctx.db.view.findFirst({
+        where: {
+          tabId: input.tabId,
+        },
+        orderBy: {
+          position: "desc",
+        },
+        select: {
+          position: true,
+        },
+      });
+
+      const position =
+        input.position ??
+        (highestPositionView ? highestPositionView.position + 1 : 0);
+
+      // Use a transaction to ensure all related entities are created together
+      return await ctx.db.$transaction(async (prisma) => {
+        // 1. Create a new table for this view
+        const table = await prisma.table.create({
+          data: {
+            name: `${input.name} Table`,
+            description: `Table created for view: ${input.name}`,
+          },
+        });
+
+        // 2. Create default columns for the table
+        const columns = await Promise.all([
+          prisma.column.create({
+            data: {
+              name: "Title",
+              type: ColumnType.TEXT,
+              position: 0,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Status",
+              type: ColumnType.TEXT,
+              position: 1,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Priority",
+              type: ColumnType.NUMBER,
+              position: 2,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Description",
+              type: ColumnType.TEXT,
+              position: 3,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Due Date",
+              type: ColumnType.TEXT,
+              position: 4,
+              tableId: table.id,
+            },
+          }),
+        ]);
+
+        // 3. Create the view
+        const view = await prisma.view.create({
+          data: {
+            name: input.name,
+            isDefault: input.isDefault ?? false,
+            position,
+            tabId: input.tabId,
+            tableId: table.id,
+          },
+        });
+
+        // If this view is set as default, update other views to not be default
+        if (input.isDefault) {
+          await prisma.view.updateMany({
+            where: {
+              tabId: input.tabId,
+              id: {
+                not: view.id,
+              },
+            },
+            data: {
+              isDefault: false,
+            },
+          });
         }
 
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create view with table. Please try again.",
-          cause: error,
-        });
-      }
-    }),
+        // 4. Create rows with fake data
+        const rowCount = faker.number.int({ min: 5, max: 10 });
+        const rowIds = [];
 
-  // Update a view
-  update: protectedProcedure
-    .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1).optional(),
-        config: ViewConfigSchema.optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Verify user has access to the view
-      const view = await ctx.db.view.findFirst({
-        where: {
-          id: input.id,
-          table: {
-            base: {
-              ownerId: ctx.session.user.id,
+        for (let i = 0; i < rowCount; i++) {
+          const rowId = nanoid();
+          rowIds.push(rowId);
+
+          await prisma.row.create({
+            data: {
+              id: rowId,
+              position: i,
+              tableId: table.id,
             },
-          },
-        },
-        select: { id: true, config: true },
-      });
-
-      if (!view) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "View not found or you don't have access",
-        });
-      }
-
-      const updateData: any = {};
-
-      if (input.name) {
-        updateData.name = input.name;
-      }
-
-      if (input.config) {
-        // Make sure we preserve the linkedTableId when updating config
-        const currentConfig = view.config as Record<string, any>;
-        updateData.config = {
-          ...input.config,
-          linkedTableId: currentConfig.linkedTableId,
-        };
-      }
-
-      // Update the view
-      return ctx.db.view.update({
-        where: { id: input.id },
-        data: updateData,
-      });
-    }),
-
-  // Delete a view
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      // Verify user has access to the view and get the linked table ID
-      const view = await ctx.db.view.findFirst({
-        where: {
-          id: input.id,
-          table: {
-            base: {
-              ownerId: ctx.session.user.id,
-            },
-          },
-        },
-        select: { id: true, config: true },
-      });
-
-      if (!view) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "View not found or you don't have access",
-        });
-      }
-
-      try {
-        return await ctx.db.$transaction(async (tx) => {
-          // First delete the view
-          await tx.view.delete({
-            where: { id: input.id },
           });
+        }
 
-          // Then attempt to delete the linked table if it exists
-          const config = view.config as Record<string, any>;
-          if (config && config.linkedTableId) {
-            // Check if there are other views linking to this table
-            const otherViews = await tx.view.findMany({
-              where: {
-                config: {
-                  path: ["linkedTableId"],
-                  equals: config.linkedTableId,
-                },
-                id: { not: input.id }, // Exclude the view we're deleting
-              },
-            });
+        // 5. Create cells with realistic fake data
+        const cellData = generateFakeCells(
+          columns.map((c) => ({ id: c.id, type: c.type, name: c.name })),
+          rowIds,
+        );
 
-            // Only delete the table if no other views are using it
-            if (otherViews.length === 0) {
-              await tx.table.delete({
-                where: { id: config.linkedTableId },
-              });
-            }
-          }
+        await Promise.all(
+          cellData.map((cell) =>
+            prisma.cell.create({
+              data: cell,
+            }),
+          ),
+        );
 
-          return { success: true };
-        });
-      } catch (error) {
-        console.error("Error deleting view and linked table:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to delete view and linked table",
-          cause: error,
-        });
-      }
+        return {
+          id: view.id,
+          name: view.name,
+          tabId: view.tabId,
+          tableId: view.tableId,
+        };
+      });
     }),
 });

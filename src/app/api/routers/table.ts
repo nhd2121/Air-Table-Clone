@@ -1,862 +1,545 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { ColumnType } from "@prisma/client";
+import { nanoid } from "nanoid";
 import { faker } from "@faker-js/faker";
-import { Prisma } from "@prisma/client";
 
-const ColumnTypeEnum = z.enum(["TEXT", "NUMBER"]);
+// Schema validations
+const getTableSchema = z.object({
+  viewId: z.string(),
+});
+
+const addColumnSchema = z.object({
+  tableId: z.string(),
+  name: z.string().min(1).max(255),
+  type: z.enum([ColumnType.TEXT, ColumnType.NUMBER]),
+  position: z.number().optional(),
+});
+
+const updateCellSchema = z.object({
+  columnId: z.string(),
+  rowId: z.string(),
+  value: z.string().nullable(),
+});
+
+const addRowSchema = z.object({
+  tableId: z.string(),
+  position: z.number().optional(),
+});
+
+const addMultipleRowsSchema = z.object({
+  tableId: z.string(),
+  count: z.number().min(1).max(100),
+  startPosition: z.number().optional(),
+});
+
+const generateFakeCells = (
+  columns: { id: string; type: ColumnType; name: string }[],
+  rowIds: string[],
+) => {
+  const cells = [];
+
+  const statusOptions = ["In Progress", "Done", "In Review"];
+
+  for (const rowId of rowIds) {
+    for (const column of columns) {
+      let value;
+
+      // Generate appropriate fake data based on column name and type
+      if (column.type === ColumnType.NUMBER) {
+        if (column.name.toLowerCase().includes("priority")) {
+          value = faker.number.int({ min: 1, max: 5 }).toString();
+        } else if (
+          column.name.toLowerCase().includes("price") ||
+          column.name.toLowerCase().includes("cost")
+        ) {
+          value = faker.commerce.price({ min: 10, max: 1000 }).toString();
+        } else if (column.name.toLowerCase().includes("age")) {
+          value = faker.number.int({ min: 18, max: 65 }).toString();
+        } else {
+          value = faker.number.int({ min: 1, max: 100 }).toString();
+        }
+      } else {
+        // TEXT type
+        if (column.name.toLowerCase().includes("title")) {
+          value = faker.lorem.sentence({ min: 2, max: 5 });
+        } else if (column.name.toLowerCase().includes("name")) {
+          value = faker.person.fullName();
+        } else if (column.name.toLowerCase().includes("email")) {
+          value = faker.internet.email();
+        } else if (column.name.toLowerCase().includes("phone")) {
+          value = faker.phone.number();
+        } else if (column.name.toLowerCase().includes("address")) {
+          value = faker.location.streetAddress();
+        } else if (column.name.toLowerCase().includes("company")) {
+          value = faker.company.name();
+        } else if (column.name.toLowerCase().includes("status")) {
+          value =
+            statusOptions[Math.floor(Math.random() * statusOptions.length)];
+        } else if (column.name.toLowerCase().includes("description")) {
+          value = faker.lorem.paragraph();
+        } else if (column.name.toLowerCase().includes("date")) {
+          value = faker.date.recent().toISOString().split("T")[0];
+        } else {
+          value = faker.lorem.words({ min: 1, max: 3 });
+        }
+      }
+
+      cells.push({
+        rowId,
+        columnId: column.id,
+        value,
+      });
+    }
+  }
+
+  return cells;
+};
 
 export const tableRouter = createTRPCRouter({
-  // Get all tables for a base - optimized to retrieve only what's needed
-  getTablesForBase: protectedProcedure
-    .input(z.object({ baseId: z.string() }))
+  // Get table data for a specific view
+  getTableForView: protectedProcedure
+    .input(getTableSchema)
     .query(async ({ ctx, input }) => {
-      // Use a more efficient query to verify access
-      const hasAccess = await ctx.db.base.findFirst({
-        where: {
-          id: input.baseId,
-          ownerId: ctx.session.user.id,
-        },
-        select: { id: true },
-      });
+      const userId = ctx.session.user.id;
 
-      if (!hasAccess) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Base not found or you don't have access",
-        });
-      }
-
-      return ctx.db.table.findMany({
+      // First check if the view belongs to the user
+      const view = await ctx.db.view.findFirst({
         where: {
-          baseId: input.baseId,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-        include: {
-          columns: true,
-        },
-      });
-    }),
-
-  // Get table data with pagination for better performance with large datasets
-  getTableData: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        limit: z.number().int().min(1).max(1000).optional().default(100),
-        cursor: z.string().optional(), // for pagination
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      // Verify the table belongs to a base owned by the user
-      const table = await ctx.db.table.findFirst({
-        where: {
-          id: input.tableId,
-          base: {
-            ownerId: ctx.session.user.id,
-          },
-        },
-        include: {
-          columns: {
-            orderBy: {
-              createdAt: "asc",
+          id: input.viewId,
+          tab: {
+            base: {
+              ownerId: userId,
             },
-          },
-        },
-      });
-
-      if (!table) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Table not found or you don't have access",
-        });
-      }
-
-      // Get rows with pagination
-      const rows = await ctx.db.row.findMany({
-        where: {
-          tableId: input.tableId,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-        take: input.limit + 1, // Take an extra item to determine if there are more
-        ...(input.cursor
-          ? {
-              cursor: { id: input.cursor },
-              skip: 1, // Skip the cursor
-            }
-          : {}),
-        include: {
-          cells: true,
-        },
-      });
-
-      // Check if we have more results
-      const hasMore = rows.length > input.limit;
-      if (hasMore) {
-        rows.pop(); // Remove the extra item
-      }
-
-      // Get the next cursor
-      const nextCursor = hasMore ? rows[rows.length - 1]?.id : undefined;
-
-      // Transform data into a more convenient format for the frontend
-      const formattedRows = rows.map((row) => {
-        const rowData: Record<string, string> = { id: row.id };
-
-        row.cells.forEach((cell) => {
-          const column = table.columns.find((col) => col.id === cell.columnId);
-          if (column) {
-            rowData[column.id] = cell.value ?? "";
-          }
-        });
-
-        return rowData;
-      });
-
-      return {
-        table,
-        columns: table.columns,
-        rows: formattedRows,
-        nextCursor,
-        hasMore,
-      };
-    }),
-
-  // Search with optimization and pagination
-  searchTableData: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        searchTerm: z.string(),
-        limit: z.number().int().min(1).max(1000).optional().default(100),
-        cursor: z.string().optional(),
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      // First verify the table belongs to a base owned by the user - optimized query
-      const table = await ctx.db.table.findFirst({
-        where: {
-          id: input.tableId,
-          base: {
-            ownerId: ctx.session.user.id,
-          },
-        },
-        include: {
-          columns: {
-            orderBy: {
-              createdAt: "asc",
-            },
-          },
-        },
-      });
-
-      if (!table) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Table not found or you don't have access",
-        });
-      }
-
-      // If search term is empty, return using the standard getTableData logic
-      if (!input.searchTerm.trim()) {
-        return this.getTableData.query({
-          tableId: input.tableId,
-          limit: input.limit,
-          cursor: input.cursor,
-        });
-      }
-
-      // Use more efficient query pattern for search
-      // First find cells that contain the search term
-      const matchingCells = await ctx.db.cell.findMany({
-        where: {
-          column: {
-            tableId: input.tableId,
-          },
-          value: {
-            contains: input.searchTerm,
-            mode: "insensitive", // Case-insensitive search
           },
         },
         select: {
-          rowId: true,
+          tableId: true,
         },
-        take: 1000, // Reasonable limit for search results
       });
 
-      // Extract unique row IDs
-      const matchingRowIds = [
-        ...new Set(matchingCells.map((cell) => cell.rowId)),
-      ];
-
-      // If no matches, return empty result with table structure
-      if (matchingRowIds.length === 0) {
-        return {
-          table,
-          columns: table.columns,
-          rows: [],
-          nextCursor: undefined,
-          hasMore: false,
-          searchTerm: input.searchTerm,
-        };
+      if (!view) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "View not found or you don't have permission to access it",
+        });
       }
 
-      // Get the full data for matching rows with pagination
-      const paginatedIds = matchingRowIds.slice(
-        input.cursor ? matchingRowIds.indexOf(input.cursor) + 1 : 0,
-        input.cursor
-          ? matchingRowIds.indexOf(input.cursor) + 1 + input.limit
-          : input.limit,
-      );
-
-      const hasMore =
-        paginatedIds.length <
-        matchingRowIds.length -
-          (input.cursor ? matchingRowIds.indexOf(input.cursor) + 1 : 0);
-      const nextCursor = hasMore
-        ? paginatedIds[paginatedIds.length - 1]
-        : undefined;
-
-      // Get the actual row data
-      const rows = await ctx.db.row.findMany({
+      // Get the table data with all columns, rows, and cells
+      const table = await ctx.db.table.findUnique({
         where: {
-          id: {
-            in: paginatedIds,
+          id: view.tableId,
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          isViewLinked: true,
+          createdAt: true,
+          updatedAt: true,
+          columns: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              position: true,
+            },
+            orderBy: {
+              position: "asc",
+            },
           },
-        },
-        include: {
-          cells: true,
-        },
-        orderBy: {
-          createdAt: "asc",
+          rows: {
+            select: {
+              id: true,
+              position: true,
+              cells: {
+                select: {
+                  columnId: true,
+                  value: true,
+                },
+              },
+            },
+            orderBy: {
+              position: "asc",
+            },
+          },
         },
       });
 
-      // Transform data into a more convenient format for the frontend
-      const formattedRows = rows.map((row) => {
-        const rowData: Record<string, string> = { id: row.id };
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found",
+        });
+      }
 
+      // Transform the data into a more convenient format for the frontend
+      const formattedRows = table.rows.map((row) => {
+        const cells = {};
         row.cells.forEach((cell) => {
-          const column = table.columns.find((col) => col.id === cell.columnId);
-          if (column) {
-            rowData[column.id] = cell.value ?? "";
-          }
+          cells[cell.columnId] = cell.value;
         });
 
-        return rowData;
+        return {
+          id: row.id,
+          position: row.position,
+          cells,
+        };
       });
 
       return {
-        table,
-        columns: table.columns,
-        rows: formattedRows,
-        nextCursor,
-        hasMore,
-        searchTerm: input.searchTerm,
+        ...table,
+        formattedRows,
       };
     }),
 
-  // Create a new table using transactions for reliability
-  create: protectedProcedure
-    .input(
-      z.object({
-        baseId: z.string(),
-        name: z.string().min(1),
-        description: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Extend timeout for this operation
-      ctx.headers.set("request-timeout", "30000");
-
-      try {
-        // Use a transaction to ensure all operations complete together
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Verify the base belongs to the user
-            const base = await tx.base.findFirst({
-              where: {
-                id: input.baseId,
-                ownerId: ctx.session.user.id,
-              },
-              select: { id: true },
-            });
-
-            if (!base) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Base not found or you don't have access",
-              });
-            }
-
-            // Create the table with specific column names
-            const table = await tx.table.create({
-              data: {
-                name: input.name,
-                description: input.description,
-                base: { connect: { id: input.baseId } },
-                columns: {
-                  create: [
-                    { name: "Name", type: "TEXT" },
-                    { name: "Email", type: "TEXT" },
-                    { name: "Phone", type: "TEXT" },
-                    { name: "Notes", type: "TEXT" },
-                  ],
-                },
-              },
-              include: {
-                columns: true,
-              },
-            });
-
-            // Create default "View 1" for this table
-            await tx.view.create({
-              data: {
-                name: "View 1",
-                config: {}, // Empty default config
-                table: { connect: { id: table.id } },
-              },
-            });
-
-            // Create initial rows in batch
-            const rowPromises = [];
-            for (let i = 0; i < 4; i++) {
-              // Generate a set of fake data for this row
-              const fakeData = {
-                Name: faker.person.fullName(),
-                Email: faker.internet.email(),
-                Phone: faker.phone.number(),
-                Notes: faker.lorem.sentence(),
-              };
-
-              // Create the row
-              const rowPromise = tx.row
-                .create({
-                  data: {
-                    table: { connect: { id: table.id } },
-                  },
-                })
-                .then(async (row) => {
-                  // Add cells for each column
-                  const cellPromises = table.columns.map((column) => {
-                    let value = "";
-                    if (column.name === "Name") value = fakeData.Name;
-                    else if (column.name === "Email") value = fakeData.Email;
-                    else if (column.name === "Phone") value = fakeData.Phone;
-                    else if (column.name === "Notes") value = fakeData.Notes;
-
-                    return tx.cell.create({
-                      data: {
-                        columnId: column.id,
-                        rowId: row.id,
-                        value,
-                      },
-                    });
-                  });
-
-                  await Promise.all(cellPromises);
-                  return row;
-                });
-
-              rowPromises.push(rowPromise);
-            }
-
-            // Wait for all rows to be created
-            await Promise.all(rowPromises);
-
-            return table;
-          },
-          {
-            timeout: 25000,
-            maxWait: 5000,
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-          },
-        );
-      } catch (error) {
-        console.error("Error creating table:", error);
-
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create table. Please try again.",
-          cause: error,
-        });
-      }
-    }),
-
-  // Add a column to a table with optimized transaction
+  // Add a new column to a table
   addColumn: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        name: z.string().min(1),
-        type: ColumnTypeEnum.default("TEXT"),
-      }),
-    )
+    .input(addColumnSchema)
     .mutation(async ({ ctx, input }) => {
-      try {
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Verify the table belongs to a base owned by the user
-            const table = await tx.table.findFirst({
-              where: {
-                id: input.tableId,
+      const userId = ctx.session.user.id;
+
+      // Check if the table belongs to the user
+      const table = await ctx.db.table.findFirst({
+        where: {
+          id: input.tableId,
+          views: {
+            some: {
+              tab: {
                 base: {
-                  ownerId: ctx.session.user.id,
+                  ownerId: userId,
                 },
               },
-              include: {
-                rows: {
-                  select: { id: true }, // Only select row IDs to optimize
-                },
-              },
-            });
-
-            if (!table) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Table not found or you don't have access",
-              });
-            }
-
-            // Create the new column
-            const column = await tx.column.create({
-              data: {
-                name: input.name,
-                type: input.type,
-                table: { connect: { id: input.tableId } },
-              },
-            });
-
-            // Generate faker data for all rows in bulk
-            if (table.rows.length > 0) {
-              const cellCreations = table.rows.map((row) => {
-                let value = "";
-
-                // Generate data based on column name first, then fall back to type
-                if (input.name.toLowerCase().includes("name")) {
-                  value = faker.person.fullName();
-                } else if (input.name.toLowerCase().includes("email")) {
-                  value = faker.internet.email();
-                } else if (input.name.toLowerCase().includes("phone")) {
-                  value = faker.phone.number();
-                } else if (input.name.toLowerCase().includes("note")) {
-                  value = faker.lorem.sentence();
-                } else if (input.type === "NUMBER") {
-                  value = faker.number.int({ min: 1, max: 1000 }).toString();
-                } else {
-                  // Default for TEXT type
-                  value = faker.lorem.words(3);
-                }
-
-                return tx.cell.create({
-                  data: {
-                    columnId: column.id,
-                    rowId: row.id,
-                    value,
-                  },
-                });
-              });
-
-              await Promise.all(cellCreations);
-            }
-
-            return column;
+            },
           },
-          {
-            timeout: 15000,
-            maxWait: 3000,
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-          },
-        );
-      } catch (error) {
-        console.error("Error adding column:", error);
+        },
+        include: {
+          rows: true,
+        },
+      });
 
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-
+      if (!table) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to add column",
-          cause: error,
+          code: "NOT_FOUND",
+          message: "Table not found or you don't have permission to modify it",
         });
       }
-    }),
 
-  // Update a cell value with better error handling
-  updateCell: protectedProcedure
-    .input(
-      z.object({
-        rowId: z.string(),
-        columnId: z.string(),
-        value: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        // Optimize the verification query - only fetch what we need
-        const cellWithOwnership = await ctx.db.cell.findUnique({
+      // Get the highest position if not provided
+      let position = input.position;
+      if (position === undefined) {
+        const highestColumn = await ctx.db.column.findFirst({
           where: {
-            columnId_rowId: {
-              columnId: input.columnId,
-              rowId: input.rowId,
-            },
+            tableId: input.tableId,
+          },
+          orderBy: {
+            position: "desc",
           },
           select: {
-            row: {
-              select: {
-                table: {
-                  select: {
+            position: true,
+          },
+        });
+
+        position = highestColumn ? highestColumn.position + 1 : 0;
+      }
+
+      // Use a transaction to create the column and cells for all existing rows
+      return await ctx.db.$transaction(async (prisma) => {
+        // Create the new column
+        const column = await prisma.column.create({
+          data: {
+            name: input.name,
+            type: input.type,
+            position,
+            tableId: input.tableId,
+          },
+        });
+
+        // Create cells for all existing rows
+        if (table.rows.length > 0) {
+          const rowIds = table.rows.map((row) => row.id);
+          const cellData = generateFakeCells(
+            [{ id: column.id, type: column.type, name: column.name }],
+            rowIds,
+          );
+
+          await Promise.all(
+            cellData.map((cell) =>
+              prisma.cell.create({
+                data: cell,
+              }),
+            ),
+          );
+        }
+
+        return column;
+      });
+    }),
+
+  // Update a cell value
+  updateCell: protectedProcedure
+    .input(updateCellSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // Check if the cell belongs to the user
+      const cell = await ctx.db.cell.findFirst({
+        where: {
+          columnId: input.columnId,
+          rowId: input.rowId,
+          column: {
+            table: {
+              views: {
+                some: {
+                  tab: {
                     base: {
-                      select: {
-                        ownerId: true,
-                      },
+                      ownerId: userId,
                     },
                   },
                 },
               },
             },
           },
+        },
+      });
+
+      if (!cell) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Cell not found or you don't have permission to update it",
         });
+      }
 
-        if (
-          !cellWithOwnership ||
-          cellWithOwnership.row.table.base.ownerId !== ctx.session.user.id
-        ) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Cell not found or you don't have access",
-          });
-        }
+      // Update the cell value
+      const updatedCell = await ctx.db.cell.update({
+        where: {
+          columnId_rowId: {
+            columnId: input.columnId,
+            rowId: input.rowId,
+          },
+        },
+        data: {
+          value: input.value,
+          updatedAt: new Date(),
+        },
+      });
 
-        return ctx.db.cell.update({
-          where: {
-            columnId_rowId: {
-              columnId: input.columnId,
-              rowId: input.rowId,
+      return updatedCell;
+    }),
+
+  // Add a single row to a table
+  addRow: protectedProcedure
+    .input(addRowSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // Check if the table belongs to the user
+      const table = await ctx.db.table.findFirst({
+        where: {
+          id: input.tableId,
+          views: {
+            some: {
+              tab: {
+                base: {
+                  ownerId: userId,
+                },
+              },
             },
           },
+        },
+        include: {
+          columns: {
+            select: {
+              id: true,
+              type: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found or you don't have permission to modify it",
+        });
+      }
+
+      // Get the highest position if not provided
+      let position = input.position;
+      if (position === undefined) {
+        const highestRow = await ctx.db.row.findFirst({
+          where: {
+            tableId: input.tableId,
+          },
+          orderBy: {
+            position: "desc",
+          },
+          select: {
+            position: true,
+          },
+        });
+
+        position = highestRow ? highestRow.position + 1 : 0;
+      }
+
+      // Use a transaction to create the row and its cells
+      return await ctx.db.$transaction(async (prisma) => {
+        // Create the new row
+        const rowId = nanoid();
+        const row = await prisma.row.create({
           data: {
-            value: input.value,
+            id: rowId,
+            position,
+            tableId: input.tableId,
           },
         });
-      } catch (error) {
-        console.error("Error updating cell:", error);
 
-        if (error instanceof TRPCError) {
-          throw error;
+        // Create cells for the new row with fake data
+        if (table.columns.length > 0) {
+          const cellData = generateFakeCells(table.columns, [rowId]);
+
+          await Promise.all(
+            cellData.map((cell) =>
+              prisma.cell.create({
+                data: cell,
+              }),
+            ),
+          );
         }
 
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update cell",
-          cause: error,
+        // Return the row with its cells
+        const completeRow = await prisma.row.findUnique({
+          where: {
+            id: row.id,
+          },
+          include: {
+            cells: {
+              select: {
+                columnId: true,
+                value: true,
+              },
+            },
+          },
         });
-      }
+
+        // Format the cells as an object for easier frontend consumption
+        const formattedCells = {};
+        completeRow?.cells.forEach((cell) => {
+          formattedCells[cell.columnId] = cell.value;
+        });
+
+        return {
+          id: row.id,
+          position: row.position,
+          cells: formattedCells,
+        };
+      });
     }),
 
-  // Add a new row with optimized transaction
-  addRow: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Verify the table belongs to a base owned by the user
-            const table = await tx.table.findFirst({
-              where: {
-                id: input.tableId,
-                base: {
-                  ownerId: ctx.session.user.id,
-                },
-              },
-              include: {
-                columns: true,
-              },
-            });
-
-            if (!table) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Table not found or you don't have access",
-              });
-            }
-
-            // Create the new row
-            const row = await tx.row.create({
-              data: {
-                table: { connect: { id: input.tableId } },
-              },
-            });
-
-            // Pre-generate fake data for each column type
-            const fakerData = {
-              name: faker.person.fullName(),
-              email: faker.internet.email(),
-              phone: faker.phone.number(),
-              notes: faker.lorem.sentence(),
-              number: faker.number.int({ min: 1, max: 1000 }).toString(),
-              text: faker.lorem.words(3),
-            };
-
-            // Create cells for all columns in parallel
-            const cellPromises = table.columns.map((column) => {
-              let value = "";
-
-              // Generate appropriate data based on column name or type
-              if (
-                column.name === "Name" ||
-                column.name.toLowerCase().includes("name")
-              ) {
-                value = fakerData.name;
-              } else if (
-                column.name === "Email" ||
-                column.name.toLowerCase().includes("email")
-              ) {
-                value = fakerData.email;
-              } else if (
-                column.name === "Phone" ||
-                column.name.toLowerCase().includes("phone")
-              ) {
-                value = fakerData.phone;
-              } else if (
-                column.name === "Notes" ||
-                column.name.toLowerCase().includes("note")
-              ) {
-                value = fakerData.notes;
-              } else if (column.type === "NUMBER") {
-                value = fakerData.number;
-              } else {
-                value = fakerData.text;
-              }
-
-              return tx.cell.create({
-                data: {
-                  columnId: column.id,
-                  rowId: row.id,
-                  value,
-                },
-              });
-            });
-
-            await Promise.all(cellPromises);
-
-            // Return the row with cells included
-            return tx.row.findUnique({
-              where: { id: row.id },
-              include: {
-                cells: true,
-              },
-            });
-          },
-          {
-            timeout: 10000,
-            maxWait: 2000,
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-          },
-        );
-      } catch (error) {
-        console.error("Error adding row:", error);
-
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to add row",
-          cause: error,
-        });
-      }
-    }),
-
+  // Add multiple rows to a table
   addMultipleRows: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        count: z.number().int().min(1).max(100).default(100),
-      }),
-    )
+    .input(addMultipleRowsSchema)
     .mutation(async ({ ctx, input }) => {
-      try {
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Verify the table belongs to a base owned by the user
-            const table = await tx.table.findFirst({
-              where: {
-                id: input.tableId,
+      const userId = ctx.session.user.id;
+
+      // Check if the table belongs to the user
+      const table = await ctx.db.table.findFirst({
+        where: {
+          id: input.tableId,
+          views: {
+            some: {
+              tab: {
                 base: {
-                  ownerId: ctx.session.user.id,
+                  ownerId: userId,
                 },
               },
-              include: {
-                columns: true,
-              },
-            });
-
-            if (!table) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Table not found or you don't have access",
-              });
-            }
-
-            // Pre-generate fake data for each column type for all rows
-            const rowsData: any[] = [];
-
-            for (let i = 0; i < input.count; i++) {
-              const fakerData = {
-                name: faker.person.fullName(),
-                email: faker.internet.email(),
-                phone: faker.phone.number(),
-                notes: faker.lorem.sentence(),
-                number: faker.number.int({ min: 1, max: 1000 }).toString(),
-                text: faker.lorem.words(3),
-              };
-
-              rowsData.push(fakerData);
-            }
-
-            // Batch create all rows
-            const createdRows: Array<{
-              id: string;
-              cells: Array<{
-                columnId: string;
-                value: string | null;
-              }>;
-            }> = [];
-
-            // Process in smaller batches of 10 to avoid overwhelming the DB
-            const batchSize = 10;
-            const batches = Math.ceil(input.count / batchSize);
-
-            for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
-              const startIdx = batchIndex * batchSize;
-              const endIdx = Math.min(startIdx + batchSize, input.count);
-              const batchPromises = [];
-
-              for (let i = startIdx; i < endIdx; i++) {
-                // Create the row
-                const rowPromise = tx.row
-                  .create({
-                    data: {
-                      table: { connect: { id: input.tableId } },
-                    },
-                  })
-                  .then(async (row) => {
-                    // Get the faker data for this row
-                    const fakerData = rowsData[i];
-
-                    // Create cells for all columns in parallel
-                    const cellPromises = table.columns.map((column) => {
-                      let value = "";
-
-                      // Generate appropriate data based on column name or type
-                      if (
-                        column.name === "Name" ||
-                        column.name.toLowerCase().includes("name")
-                      ) {
-                        value = fakerData.name;
-                      } else if (
-                        column.name === "Email" ||
-                        column.name.toLowerCase().includes("email")
-                      ) {
-                        value = fakerData.email;
-                      } else if (
-                        column.name === "Phone" ||
-                        column.name.toLowerCase().includes("phone")
-                      ) {
-                        value = fakerData.phone;
-                      } else if (
-                        column.name === "Notes" ||
-                        column.name.toLowerCase().includes("note")
-                      ) {
-                        value = fakerData.notes;
-                      } else if (column.type === "NUMBER") {
-                        value = fakerData.number;
-                      } else {
-                        value = fakerData.text;
-                      }
-
-                      return tx.cell.create({
-                        data: {
-                          columnId: column.id,
-                          rowId: row.id,
-                          value,
-                        },
-                      });
-                    });
-
-                    await Promise.all(cellPromises);
-
-                    // Get the complete row with cells
-                    const completeRow = await tx.row.findUnique({
-                      where: { id: row.id },
-                      include: {
-                        cells: true,
-                      },
-                    });
-
-                    if (!completeRow) {
-                      throw new TRPCError({
-                        code: "INTERNAL_SERVER_ERROR",
-                        message: "Failed to retrieve created row",
-                      });
-                    }
-
-                    // Add properly typed row to our results
-                    createdRows.push({
-                      id: completeRow.id,
-                      cells: completeRow.cells.map((cell) => ({
-                        columnId: cell.columnId,
-                        value: cell.value,
-                      })),
-                    });
-
-                    return completeRow;
-                  });
-
-                batchPromises.push(rowPromise);
-              }
-
-              // Wait for each batch to complete before moving to the next
-              await Promise.all(batchPromises);
-            }
-
-            return createdRows;
+            },
           },
-          {
-            timeout: 60000, // Increase timeout for batch operations
-            maxWait: 5000,
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        },
+        include: {
+          columns: {
+            select: {
+              id: true,
+              type: true,
+              name: true,
+            },
           },
-        );
-      } catch (error) {
-        console.error("Error adding multiple rows:", error);
+        },
+      });
 
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-
+      if (!table) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to add rows",
-          cause: error,
+          code: "NOT_FOUND",
+          message: "Table not found or you don't have permission to modify it",
         });
       }
+
+      // Get the starting position if not provided
+      let startPosition = input.startPosition;
+      if (startPosition === undefined) {
+        const highestRow = await ctx.db.row.findFirst({
+          where: {
+            tableId: input.tableId,
+          },
+          orderBy: {
+            position: "desc",
+          },
+          select: {
+            position: true,
+          },
+        });
+
+        startPosition = highestRow ? highestRow.position + 1 : 0;
+      }
+
+      // Use a transaction to create multiple rows and their cells
+      return await ctx.db.$transaction(async (prisma) => {
+        const createdRows = [];
+        const rowIds = [];
+
+        // Create the new rows
+        for (let i = 0; i < input.count; i++) {
+          const rowId = nanoid();
+          rowIds.push(rowId);
+
+          const row = await prisma.row.create({
+            data: {
+              id: rowId,
+              position: startPosition + i,
+              tableId: input.tableId,
+            },
+          });
+
+          createdRows.push(row);
+        }
+
+        // Create cells for all the new rows with fake data
+        if (table.columns.length > 0) {
+          const cellData = generateFakeCells(table.columns, rowIds);
+
+          await Promise.all(
+            cellData.map((cell) =>
+              prisma.cell.create({
+                data: cell,
+              }),
+            ),
+          );
+        }
+
+        return {
+          count: createdRows.length,
+          rows: createdRows.map((row) => ({
+            id: row.id,
+            position: row.position,
+          })),
+        };
+      });
     }),
 });

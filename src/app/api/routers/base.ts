@@ -1,21 +1,101 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import { ColumnType } from "@prisma/client";
+import { nanoid } from "nanoid";
 import { faker } from "@faker-js/faker";
-import type { Base, Column, Table } from "@/type/db";
-import { Prisma } from "@prisma/client";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+// Schema validation for Base creation
+const createBaseSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().optional(),
+});
+
+// Schema validation for Base update
+const updateBaseSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(255),
+  description: z.string().optional(),
+});
+
+// Helper to generate fake data cells for a new table
+const generateFakeCells = (
+  columns: { id: string; type: ColumnType; name: string }[],
+  rowIds: string[],
+) => {
+  const cells = [];
+
+  const statusOptions = ["In Progress", "Done", "In Review"];
+
+  for (const rowId of rowIds) {
+    for (const column of columns) {
+      let value;
+
+      // Generate appropriate fake data based on column name and type
+      if (column.type === ColumnType.NUMBER) {
+        if (column.name.toLowerCase().includes("priority")) {
+          value = faker.number.int({ min: 1, max: 5 }).toString();
+        } else if (
+          column.name.toLowerCase().includes("price") ||
+          column.name.toLowerCase().includes("cost")
+        ) {
+          value = faker.commerce.price({ min: 10, max: 1000 }).toString();
+        } else if (column.name.toLowerCase().includes("age")) {
+          value = faker.number.int({ min: 18, max: 65 }).toString();
+        } else {
+          value = faker.number.int({ min: 1, max: 100 }).toString();
+        }
+      } else {
+        // TEXT type
+        if (column.name.toLowerCase().includes("title")) {
+          value = faker.lorem.sentence({ min: 2, max: 5 });
+        } else if (column.name.toLowerCase().includes("name")) {
+          value = faker.person.fullName();
+        } else if (column.name.toLowerCase().includes("email")) {
+          value = faker.internet.email();
+        } else if (column.name.toLowerCase().includes("phone")) {
+          value = faker.phone.number();
+        } else if (column.name.toLowerCase().includes("address")) {
+          value = faker.location.streetAddress();
+        } else if (column.name.toLowerCase().includes("company")) {
+          value = faker.company.name();
+        } else if (column.name.toLowerCase().includes("status")) {
+          value =
+            statusOptions[Math.floor(Math.random() * statusOptions.length)];
+        } else if (column.name.toLowerCase().includes("description")) {
+          value = faker.lorem.paragraph();
+        } else if (column.name.toLowerCase().includes("date")) {
+          value = faker.date.recent().toISOString().split("T")[0];
+        } else {
+          value = faker.lorem.words({ min: 1, max: 3 });
+        }
+      }
+
+      cells.push({
+        rowId,
+        columnId: column.id,
+        value,
+      });
+    }
+  }
+
+  return cells;
+};
 
 export const baseRouter = createTRPCRouter({
-  // Get all bases for the current user - optimized query
+  // Get all bases for the current user
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.db.base.findMany({
+    const userId = ctx.session.user.id;
+
+    // Optimized query to fetch only necessary data
+    const bases = await ctx.db.base.findMany({
       where: {
-        ownerId: ctx.session.user.id,
+        ownerId: userId,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-      // Only select what we need for the list view
       select: {
         id: true,
         name: true,
@@ -24,26 +104,56 @@ export const baseRouter = createTRPCRouter({
         updatedAt: true,
         _count: {
           select: {
-            tables: true,
+            tabs: true,
           },
         },
       },
+      orderBy: {
+        updatedAt: "desc",
+      },
     });
+
+    return bases;
   }),
 
-  // Get a single base by ID - optimized to fetch just what's needed
+  // Get a single base by ID with its tabs, views, and tables
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
       const base = await ctx.db.base.findFirst({
         where: {
           id: input.id,
-          ownerId: ctx.session.user.id,
+          ownerId: userId,
         },
-        include: {
-          tables: {
-            include: {
-              columns: true,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          createdAt: true,
+          updatedAt: true,
+          tabs: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              position: true,
+              views: {
+                select: {
+                  id: true,
+                  name: true,
+                  isDefault: true,
+                  position: true,
+                  tableId: true,
+                },
+                orderBy: {
+                  position: "asc",
+                },
+              },
+            },
+            orderBy: {
+              position: "asc",
             },
           },
         },
@@ -52,219 +162,243 @@ export const baseRouter = createTRPCRouter({
       if (!base) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Base not found or you don't have access",
+          message: "Base not found",
         });
       }
 
       return base;
     }),
 
-  // Create a new base with improved error handling and transaction
+  // Create a new base with default tab, view, and table
   create: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().min(1),
-        description: z.string().optional(),
-      }),
-    )
+    .input(createBaseSchema)
     .mutation(async ({ ctx, input }) => {
-      // Add a timeout extension for this operation
-      ctx.headers.set("request-timeout", "30000"); // 30 seconds
+      const userId = ctx.session.user.id;
 
-      try {
-        // Use a transaction to ensure all operations succeed or fail together
-        return await ctx.db.$transaction(
-          async (tx) => {
-            // Create the base with initial table structure
-            const base = await tx.base.create({
-              data: {
-                name: input.name,
-                description: input.description,
-                owner: { connect: { id: ctx.session.user.id } },
-                tables: {
-                  create: {
-                    name: "Table 1",
-                    columns: {
-                      create: [
-                        { name: "Name", type: "TEXT" },
-                        { name: "Email", type: "TEXT" },
-                        { name: "Phone", type: "TEXT" },
-                        { name: "Notes", type: "TEXT" },
-                      ],
-                    },
-                  },
-                },
-              },
-              include: {
-                tables: {
-                  include: {
-                    columns: true,
-                  },
-                },
-              },
-            });
-
-            // Early return with just the base if no tables were created
-            if (!base.tables || base.tables.length === 0) {
-              return base as Base & {
-                tables: (Table & {
-                  columns: Column[];
-                })[];
-              };
-            }
-
-            const table = base.tables[0];
-            if (!table) {
-              throw new TRPCError({
-                code: "INTERNAL_SERVER_ERROR",
-                message: "Table not found in the newly created base.",
-              });
-            }
-
-            // Create default view for the table
-            await tx.view.create({
-              data: {
-                name: "View 1",
-                config: {}, // Empty default config
-                table: { connect: { id: table.id } },
-              },
-            });
-
-            // Prepare all row and cell creation operations for a batch insert
-            const rowsToCreate = [];
-
-            // Create 4 rows with pre-generated data
-            for (let i = 0; i < 4; i++) {
-              // Generate fake data for each column upfront
-              const fakeData = {
-                Name: faker.person.fullName(),
-                Email: faker.internet.email(),
-                Phone: faker.phone.number(),
-                Notes: faker.lorem.sentence(),
-              };
-
-              // Create the row
-              const row = await tx.row.create({
-                data: {
-                  table: { connect: { id: table.id } },
-                },
-              });
-
-              // Prepare cell creation for each column
-              for (const column of table.columns) {
-                // Get appropriate fake data based on column name
-                let value = "";
-                if (column.name === "Name") value = fakeData.Name;
-                else if (column.name === "Email") value = fakeData.Email;
-                else if (column.name === "Phone") value = fakeData.Phone;
-                else if (column.name === "Notes") value = fakeData.Notes;
-
-                // Create the cell
-                await tx.cell.create({
-                  data: {
-                    columnId: column.id,
-                    rowId: row.id,
-                    value,
-                  },
-                });
-              }
-            }
-
-            return base as Base & {
-              tables: (Table & {
-                columns: Column[];
-              })[];
-            };
+      // Use a transaction to ensure all related entities are created together
+      return await ctx.db.$transaction(async (prisma) => {
+        // 1. Create the base
+        const base = await prisma.base.create({
+          data: {
+            name: input.name,
+            description: input.description,
+            ownerId: userId,
           },
-          {
-            // Transaction options
-            timeout: 25000, // 25 seconds timeout
-            maxWait: 5000, // Maximum wait time for acquiring connection
-            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, // Less restrictive isolation level for better performance
-          },
-        );
-      } catch (error) {
-        console.error("Error creating base:", error);
+        });
 
-        // If it's a timeout error, provide a clearer message
-        if (
-          error instanceof Error &&
-          (error.message.includes("timeout") ||
-            error.message.includes("exceed") ||
-            error.message.includes("timed out"))
-        ) {
-          throw new TRPCError({
-            code: "TIMEOUT",
-            message:
-              "Database operation timed out, but your workspace might have been created. Please check your workspace list.",
+        // 2. Create a default tab
+        const tab = await prisma.tab.create({
+          data: {
+            name: "Table",
+            description: "Default tab",
+            position: 0,
+            baseId: base.id,
+          },
+        });
+
+        // 3. Create a default table with columns
+        const table = await prisma.table.create({
+          data: {
+            name: "Default Table",
+            description: "Automatically created table",
+          },
+        });
+
+        // 4. Create default columns for the table
+        const columns = await Promise.all([
+          prisma.column.create({
+            data: {
+              name: "Title",
+              type: ColumnType.TEXT,
+              position: 0,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Status",
+              type: ColumnType.TEXT,
+              position: 1,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Priority",
+              type: ColumnType.NUMBER,
+              position: 2,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Description",
+              type: ColumnType.TEXT,
+              position: 3,
+              tableId: table.id,
+            },
+          }),
+          prisma.column.create({
+            data: {
+              name: "Due Date",
+              type: ColumnType.TEXT,
+              position: 4,
+              tableId: table.id,
+            },
+          }),
+        ]);
+
+        // 5. Create default view
+        const view = await prisma.view.create({
+          data: {
+            name: "View 1",
+            isDefault: true,
+            position: 0,
+            tabId: tab.id,
+            tableId: table.id,
+          },
+        });
+
+        // 6. Create default rows (between 5-10 random rows)
+        const rowCount = faker.number.int({ min: 5, max: 10 });
+        const rowIds = [];
+
+        for (let i = 0; i < rowCount; i++) {
+          const rowId = nanoid();
+          rowIds.push(rowId);
+
+          await prisma.row.create({
+            data: {
+              id: rowId,
+              position: i,
+              tableId: table.id,
+            },
           });
         }
 
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create workspace. Please try again.",
-          cause: error,
-        });
-      }
+        // 7. Create cells with realistic fake data
+        const cellData = generateFakeCells(
+          columns.map((c) => ({ id: c.id, type: c.type, name: c.name })),
+          rowIds,
+        );
+
+        await Promise.all(
+          cellData.map((cell) =>
+            prisma.cell.create({
+              data: cell,
+            }),
+          ),
+        );
+
+        return {
+          id: base.id,
+          name: base.name,
+          description: base.description,
+        };
+      });
     }),
 
-  // Update a base
+  // Update base name and description
   update: protectedProcedure
-    .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1),
-        description: z.string().optional(),
-      }),
-    )
+    .input(updateBaseSchema)
     .mutation(async ({ ctx, input }) => {
-      // First, verify the base belongs to the user
-      const base = await ctx.db.base.findFirst({
+      const userId = ctx.session.user.id;
+
+      // Check if the base exists and belongs to the user
+      const existingBase = await ctx.db.base.findFirst({
         where: {
           id: input.id,
-          ownerId: ctx.session.user.id,
+          ownerId: userId,
         },
-        select: { id: true }, // Only select the ID to optimize the query
       });
 
-      if (!base) {
+      if (!existingBase) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Base not found or you don't have access",
+          message: "Base not found or you don't have permission to update it",
         });
       }
 
-      return ctx.db.base.update({
-        where: { id: input.id },
+      // Update the base
+      const updatedBase = await ctx.db.base.update({
+        where: {
+          id: input.id,
+        },
         data: {
           name: input.name,
           description: input.description,
+          updatedAt: new Date(),
         },
       });
+
+      return updatedBase;
     }),
 
-  // Delete a base
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      // First, verify the base belongs to the user
-      const base = await ctx.db.base.findFirst({
-        where: {
-          id: input.id,
-          ownerId: ctx.session.user.id,
-        },
-        select: { id: true }, // Only select the ID to optimize the query
-      });
+  // Delete a base and all its related data
+  // delete: protectedProcedure
+  //   .input(z.object({ id: z.string() }))
+  //   .mutation(async ({ ctx, input }) => {
+  //     const userId = ctx.session.user.id;
 
-      if (!base) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Base not found or you don't have access",
-        });
-      }
+  //     // Check if the base exists and belongs to the user
+  //     const existingBase = await ctx.db.base.findFirst({
+  //       where: {
+  //         id: input.id,
+  //         ownerId: userId,
+  //       },
+  //     });
 
-      return ctx.db.base.delete({
-        where: { id: input.id },
-      });
-    }),
+  //     if (!existingBase) {
+  //       throw new TRPCError({
+  //         code: "NOT_FOUND",
+  //         message: "Base not found or you don't have permission to delete it",
+  //       });
+  //     }
+
+  //     // Get all tabs belonging to this base
+  //     const tabs = await ctx.db.tab.findMany({
+  //       where: {
+  //         baseId: input.id,
+  //       },
+  //       select: {
+  //         id: true,
+  //         views: {
+  //           select: {
+  //             tableId: true,
+  //           },
+  //         },
+  //       },
+  //     });
+
+  //     // Get all unique table IDs associated with this base's views
+  //     const tableIds = new Set<string>();
+  //     tabs.forEach((tab) => {
+  //       tab.views.forEach((view) => {
+  //         tableIds.add(view.tableId);
+  //       });
+  //     });
+
+  //     // Use a transaction to ensure all related data is deleted consistently
+  //     return await ctx.prisma.$transaction(async (prisma) => {
+  //       // Delete all tables associated with this base's views
+  //       for (const tableId of tableIds) {
+  //         // This will cascade delete columns, rows, and cells
+  //         await prisma.table.delete({
+  //           where: {
+  //             id: tableId,
+  //           },
+  //         });
+  //       }
+
+  //       // Delete the base (which will cascade delete tabs and views)
+  //       await prisma.base.delete({
+  //         where: {
+  //           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  //           id: input.id,
+  //         },
+  //       });
+
+  //       return { success: true };
+  //     });
+  //   }),
 });
