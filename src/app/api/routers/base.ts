@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -335,70 +336,69 @@ export const baseRouter = createTRPCRouter({
     }),
 
   // Delete a base and all its related data
-  // delete: protectedProcedure
-  //   .input(z.object({ id: z.string() }))
-  //   .mutation(async ({ ctx, input }) => {
-  //     const userId = ctx.session.user.id;
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
 
-  //     // Check if the base exists and belongs to the user
-  //     const existingBase = await ctx.db.base.findFirst({
-  //       where: {
-  //         id: input.id,
-  //         ownerId: userId,
-  //       },
-  //     });
+      // Check if the base exists and belongs to the user
+      const existingBase = await ctx.db.base.findFirst({
+        where: {
+          id: input.id,
+          ownerId: userId,
+        },
+      });
 
-  //     if (!existingBase) {
-  //       throw new TRPCError({
-  //         code: "NOT_FOUND",
-  //         message: "Base not found or you don't have permission to delete it",
-  //       });
-  //     }
+      if (!existingBase) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Base not found or you don't have permission to delete it",
+        });
+      }
 
-  //     // Get all tabs belonging to this base
-  //     const tabs = await ctx.db.tab.findMany({
-  //       where: {
-  //         baseId: input.id,
-  //       },
-  //       select: {
-  //         id: true,
-  //         views: {
-  //           select: {
-  //             tableId: true,
-  //           },
-  //         },
-  //       },
-  //     });
+      // Get all tabs belonging to this base
+      const tabs = await ctx.db.tab.findMany({
+        where: {
+          baseId: input.id,
+        },
+        select: {
+          id: true,
+          views: {
+            select: {
+              tableId: true,
+            },
+          },
+        },
+      });
 
-  //     // Get all unique table IDs associated with this base's views
-  //     const tableIds = new Set<string>();
-  //     tabs.forEach((tab) => {
-  //       tab.views.forEach((view) => {
-  //         tableIds.add(view.tableId);
-  //       });
-  //     });
+      // Get all unique table IDs associated with this base's views
+      const tableIds = new Set<string>();
+      tabs.forEach((tab) => {
+        tab.views.forEach((view) => {
+          tableIds.add(view.tableId);
+        });
+      });
 
-  //     // Use a transaction to ensure all related data is deleted consistently
-  //     return await ctx.prisma.$transaction(async (prisma) => {
-  //       // Delete all tables associated with this base's views
-  //       for (const tableId of tableIds) {
-  //         // This will cascade delete columns, rows, and cells
-  //         await prisma.table.delete({
-  //           where: {
-  //             id: tableId,
-  //           },
-  //         });
-  //       }
+      // Use a transaction to ensure all related data is deleted consistently
+      return await ctx.db.$transaction(async (prisma) => {
+        // Delete all tables associated with this base's views
+        for (const tableId of tableIds) {
+          // This will cascade delete columns, rows, and cells
+          await prisma.table.delete({
+            where: {
+              id: tableId,
+            },
+          });
+        }
 
-  //       // Delete the base (which will cascade delete tabs and views)
-  //       await prisma.base.delete({
-  //         where: {
-  //           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  //           id: input.id,
-  //         },
-  //       });
+        // Delete the base (which will cascade delete tabs and views)
+        await prisma.base.delete({
+          where: {
+            id: input.id,
+          },
+        });
 
-  //       return { success: true };
-  //     });
-  //   }),
+        return { success: true };
+      });
+    }),
 });

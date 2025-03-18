@@ -1,4 +1,5 @@
 import { baseRouter } from "@/app/api/routers/base";
+import { tabRouter } from "@/app/api/routers/tab";
 import { tableRouter } from "@/app/api/routers/table";
 import { viewRouter } from "@/app/api/routers/view";
 import { postRouter } from "@/server/api/routers/post";
@@ -14,6 +15,7 @@ export const appRouter = createTRPCRouter({
   base: baseRouter,
   table: tableRouter,
   view: viewRouter,
+  tab: tabRouter,
 });
 
 // export type definition of API

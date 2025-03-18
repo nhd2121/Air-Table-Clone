@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -162,7 +163,6 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
                           <div
                             className={`h-14 w-14 ${bgColor} flex items-center justify-center rounded-lg text-2xl font-medium text-white`}
                           >
-                            {/* Get first 2 letters of the base name */}
                             {base.name.substring(0, 2)}
                           </div>
                         </div>
@@ -170,7 +170,11 @@ export default function HomeContent({ initialSession }: HomeContentProps) {
                           <h3 className="font-medium text-gray-900">
                             {base.name}
                           </h3>
-                          <p className="text-sm text-gray-500">Base</p>
+                          <p className="text-sm text-gray-500">
+                            {base._count?.tabs
+                              ? `${base._count.tabs} ${base._count.tabs === 1 ? "Tab" : "Tabs"}`
+                              : "Base"}
+                          </p>
                         </div>
                       </Link>
                     );
