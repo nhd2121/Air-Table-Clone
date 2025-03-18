@@ -263,16 +263,14 @@ export const tableRouter = createTRPCRouter({
 
         // Create cells for all existing rows
         if (table.rows.length > 0) {
-          const rowIds = table.rows.map((row) => row.id);
-          const cellData = generateFakeCells(
-            [{ id: column.id, type: column.type, name: column.name }],
-            rowIds,
-          );
-
           await Promise.all(
-            cellData.map((cell) =>
+            table.rows.map((row) =>
               prisma.cell.create({
-                data: cell,
+                data: {
+                  rowId: row.id,
+                  columnId: column.id,
+                  value: null,
+                },
               }),
             ),
           );

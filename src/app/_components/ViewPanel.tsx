@@ -13,6 +13,10 @@ import { generateTableColumns } from "./tableComponents/tableUltis";
 import { ViewsSidebar } from "./tableComponents/viewSideBar";
 import { TableLoadingState } from "./tableComponents/tableLoadingState";
 import { DataTable } from "./tableComponents/dataTable";
+import {
+  AddColumnViewModal,
+  type ColumnType,
+} from "../_components/tableComponents/addColumnModal";
 
 interface ViewPanelProps {
   tabId: string;
@@ -28,6 +32,7 @@ export function ViewPanel({
   onViewChange,
 }: ViewPanelProps) {
   const [showCreateViewModal, setShowCreateViewModal] = useState(false);
+  const [showAddColumnModal, setShowAddColumnModal] = useState(false);
 
   const utils = api.useUtils();
 
@@ -99,9 +104,34 @@ export function ViewPanel({
     },
   });
 
+  // Add column mutation
+  const addColumn = api.table.addColumn.useMutation({
+    onSuccess: async (newColumn) => {
+      // Close the modal
+      setShowAddColumnModal(false);
+
+      // Invalidate the table data query to refresh with the new column
+      await utils.table.getTableForView.invalidate({ viewId: activeViewId });
+
+      // Optionally fetch immediately for faster updates
+      void utils.table.getTableForView.fetch({ viewId: activeViewId });
+    },
+  });
+
   // Handle adding a new row
   const handleAddRow = (tableId: string) => {
     addRow.mutate({ tableId });
+  };
+
+  // Handle adding a new column
+  const handleAddColumn = (name: string, type: ColumnType) => {
+    if (!tableData) return;
+
+    addColumn.mutate({
+      tableId: tableData.id,
+      name,
+      type,
+    });
   };
 
   return (
@@ -127,6 +157,7 @@ export function ViewPanel({
               columns={columns}
               tableId={tableData.id}
               onAddRow={handleAddRow}
+              onAddColumn={() => setShowAddColumnModal(true)}
               isAddingRow={addRow.isPending}
             />
           </div>
@@ -136,6 +167,14 @@ export function ViewPanel({
           </div>
         )}
       </div>
+
+      {/* Add Column Modal */}
+      <AddColumnViewModal
+        isOpen={showAddColumnModal}
+        onClose={() => setShowAddColumnModal(false)}
+        onAddColumn={handleAddColumn}
+        isPending={addColumn.isPending}
+      />
 
       {/* Create View Modal */}
       <CreateViewModal

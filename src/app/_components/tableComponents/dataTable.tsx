@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-table";
 import { useState } from "react";
 import { Plus } from "lucide-react";
+import { AddColumnButton } from "./addColumnButton";
 
 interface DataTableProps<TData> {
   data: TData[];
@@ -18,6 +19,7 @@ interface DataTableProps<TData> {
   className?: string;
   tableId: string;
   onAddRow: (tableId: string) => void;
+  onAddColumn: () => void;
   isAddingRow?: boolean;
 }
 
@@ -27,13 +29,25 @@ export function DataTable<TData>({
   className = "",
   tableId,
   onAddRow,
+  onAddColumn,
   isAddingRow = false,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  // Add the "Add Column" button as a static column
+  const allColumns = [
+    ...columns,
+    {
+      id: "add-column",
+      header: () => <AddColumnButton onClick={onAddColumn} />,
+      cell: () => null,
+      size: 50,
+    },
+  ];
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
     },
@@ -53,6 +67,11 @@ export function DataTable<TData>({
                   key={header.id}
                   className="px-4 py-3 text-left text-sm font-medium text-gray-500"
                   onClick={header.column.getToggleSortingHandler()}
+                  style={
+                    header.id === "add-column"
+                      ? { width: "50px", minWidth: "50px" }
+                      : {}
+                  }
                 >
                   {header.isPlaceholder
                     ? null
@@ -78,11 +97,14 @@ export function DataTable<TData>({
 
           {/* Add Row Button Row */}
           <tr className="border-t hover:bg-gray-100">
-            <td colSpan={columns.length} className="px-4 py-2 text-center">
+            <td
+              colSpan={table.getAllColumns().length}
+              className="px-4 py-2 text-center"
+            >
               <button
                 onClick={() => onAddRow(tableId)}
                 disabled={isAddingRow}
-                className="flex w-full items-center justify-center py-1 text-sm text-gray-500 hover:text-gray-700"
+                className="flex w-full items-center justify-start py-1 text-sm text-gray-500 hover:text-gray-700"
               >
                 {isAddingRow ? (
                   <>
@@ -92,7 +114,6 @@ export function DataTable<TData>({
                 ) : (
                   <>
                     <Plus className="mr-1 h-4 w-4" />
-                    Add Row
                   </>
                 )}
               </button>
