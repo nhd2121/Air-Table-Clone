@@ -1,12 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -15,30 +15,33 @@ import {
   type SortingState,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Loader2, Plus } from "lucide-react";
 import { AddColumnButton } from "./addColumnButton";
 import { api } from "@/trpc/react";
+import RecordCountFooter from "./RecordCountFooter";
 
 interface DataTableProps<TData> {
-  data: TData[];
+  viewId: string;
   columns: ColumnDef<TData, any>[];
   className?: string;
-  tableId: string;
   onAddRow: (tableId: string) => void;
   onAddColumn: () => void;
   isAddingRow?: boolean;
 }
 
 export function DataTable<TData>({
-  data,
+  viewId,
   columns,
   className = "",
-  tableId,
   onAddRow,
   onAddColumn,
   isAddingRow = false,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const ROWS_PER_PAGE = 50;
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
   // State for handling cell editing
   const [editingCell, setEditingCell] = useState<{
@@ -51,16 +54,123 @@ export function DataTable<TData>({
   // Utility function to access the APIs
   const utils = api.useUtils();
 
+  // Use the infinite query hook to fetch data
+  const {
+    data: infiniteData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    status,
+  } = api.table.getTableDataInfinite.useInfiniteQuery(
+    {
+      viewId,
+      limit: ROWS_PER_PAGE,
+    },
+    {
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+      staleTime: 15000, // 15 seconds
+      refetchOnWindowFocus: false,
+    },
+  );
+
+  // Extract all rows from all pages
+  const flattenedRows = useMemo(() => {
+    if (!infiniteData?.pages) return [];
+    return infiniteData.pages.flatMap((page) => page.rows);
+  }, [infiniteData]);
+
+  // Get tableId from the first page
+  const tableId = infiniteData?.pages[0]?.table?.id ?? "";
+
+  // Get total count from the first page (if available)
+  const totalCount = infiniteData?.pages[0]?.totalCount;
+
+  // Set up virtualizer for rows
+  const rowVirtualizer = useVirtualizer({
+    count: hasNextPage
+      ? flattenedRows.length + 1 // +1 for loading more row
+      : flattenedRows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 48, // Default row height
+    overscan: 10, // Number of items to render above/below the visible area
+  });
+
+  // Observer for the last row to fetch more data when it comes into view
+  const lastRowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    // Observer to detect when we're near the bottom of the list
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }, // Trigger when at least 10% of the element is visible
+    );
+
+    const currentLastRow = lastRowRef.current;
+    if (currentLastRow) {
+      observer.observe(currentLastRow);
+    }
+
+    return () => {
+      if (currentLastRow) {
+        observer.unobserve(currentLastRow);
+      }
+    };
+  }, [lastRowRef, fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  // Handle scroll events to detect when user has scrolled to bottom
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!tableContainerRef.current) return;
+
+      const { scrollTop, scrollHeight, clientHeight } =
+        tableContainerRef.current;
+      const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+
+      // If we're close to the bottom (within 300px) and not already loading
+      if (
+        distanceFromBottom < 300 &&
+        hasNextPage &&
+        !isFetchingNextPage &&
+        !hasScrolledToBottom
+      ) {
+        setHasScrolledToBottom(true);
+        void fetchNextPage();
+      }
+
+      // Reset when we scroll back up
+      if (distanceFromBottom > 500 && hasScrolledToBottom) {
+        setHasScrolledToBottom(false);
+      }
+    };
+
+    const scrollElement = tableContainerRef.current;
+    if (scrollElement) {
+      scrollElement.addEventListener("scroll", handleScroll);
+    }
+
+    return () => {
+      if (scrollElement) {
+        scrollElement.removeEventListener("scroll", handleScroll);
+      }
+    };
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, hasScrolledToBottom]);
+
   // Cell update mutation
   const updateCell = api.table.updateCell.useMutation({
     onSuccess: () => {
       // Invalidate the query to refresh the table data
-      void utils.table.getTableForView.invalidate();
+      void utils.table.getTableDataInfinite.invalidate({ viewId });
     },
   });
 
   // Create column definitions with cell editing capabilities
-  const enhancedColumns = React.useMemo(() => {
+  const enhancedColumns = useMemo(() => {
     return columns.map((column) => ({
       ...column,
       cell: (info: any) => {
@@ -168,7 +278,7 @@ export function DataTable<TData>({
   };
 
   const table = useReactTable({
-    data,
+    data: flattenedRows as any[],
     columns: allColumns,
     state: {
       sorting,
@@ -176,90 +286,182 @@ export function DataTable<TData>({
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    // Important to specify that rows have stable IDs for virtualization
+    getRowId: (row: any) => row.id,
   });
 
-  return (
-    <div className={`rounded-md border border-gray-300 shadow-sm ${className}`}>
-      <table className="w-full border-collapse">
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr
-              key={headerGroup.id}
-              className="border-b-2 border-gray-300 bg-gray-50"
-            >
-              {headerGroup.headers.map((header, index) => (
-                <th
-                  key={header.id}
-                  className={`px-4 py-3 text-left text-sm font-medium text-gray-600 ${
-                    index < headerGroup.headers.length - 1
-                      ? "border-r border-gray-300"
-                      : ""
-                  }`}
-                  onClick={header.column.getToggleSortingHandler()}
-                  style={
-                    header.id === "add-column"
-                      ? { width: "50px", minWidth: "50px" }
-                      : {}
-                  }
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr
-              key={row.id}
-              className="border-b border-gray-300 hover:bg-blue-50"
-            >
-              {row.getVisibleCells().map((cell, index) => (
-                <td
-                  key={cell.id}
-                  className={`px-4 py-3 text-sm text-gray-700 ${
-                    index < row.getVisibleCells().length - 1
-                      ? "border-r border-gray-300"
-                      : ""
-                  }`}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+  // Get the virtualized rows and calculate padding
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? (virtualRows[0]?.start ?? 0) : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalHeight - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+      : 0;
 
-          {/* Add Row Button Row */}
-          <tr className="border-t border-gray-300 hover:bg-gray-100">
-            <td
-              colSpan={table.getAllColumns().length}
-              className="px-4 py-2 text-center"
-            >
-              <button
-                onClick={() => onAddRow(tableId)}
-                disabled={isAddingRow}
-                className="flex w-full items-center justify-start py-1 text-sm text-gray-500 hover:text-gray-700"
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-500">Loading data...</span>
+      </div>
+    );
+  }
+
+  // Prepare status text for footer
+  const loadingMoreText = isFetchingNextPage ? " (Loading more...)" : "";
+  const countText =
+    totalCount !== undefined
+      ? `${flattenedRows.length} of ${totalCount}${loadingMoreText}`
+      : `${flattenedRows.length}${loadingMoreText}`;
+
+  return (
+    <div
+      className={`flex h-full flex-col rounded-md border border-gray-300 shadow-sm ${className}`}
+    >
+      <div
+        ref={tableContainerRef}
+        className="flex-1 overflow-auto"
+        style={{ position: "relative" }}
+      >
+        <table className="w-full border-collapse">
+          <thead className="sticky top-0 z-10 bg-gray-50">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr
+                key={headerGroup.id}
+                className="border-b-2 border-gray-300 bg-gray-50"
               >
-                {isAddingRow ? (
-                  <>
-                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="mr-1 h-4 w-4" />
-                  </>
-                )}
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                {headerGroup.headers.map((header, index) => (
+                  <th
+                    key={header.id}
+                    className={`px-4 py-3 text-left text-sm font-medium text-gray-600 ${
+                      index < headerGroup.headers.length - 1
+                        ? "border-r border-gray-300"
+                        : ""
+                    }`}
+                    onClick={header.column.getToggleSortingHandler()}
+                    style={
+                      header.id === "add-column"
+                        ? { width: "50px", minWidth: "50px" }
+                        : {}
+                    }
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {paddingTop > 0 && (
+              <tr>
+                <td
+                  style={{ height: `${paddingTop}px` }}
+                  colSpan={table.getAllColumns().length}
+                />
+              </tr>
+            )}
+
+            {virtualRows.map((virtualRow, index) => {
+              // Handle the loading more row
+              const isLoaderRow = virtualRow.index >= flattenedRows.length;
+
+              if (isLoaderRow) {
+                return hasNextPage ? (
+                  <tr
+                    key="loader"
+                    ref={lastRowRef}
+                    className="border-b border-gray-200 text-center"
+                  >
+                    <td colSpan={table.getAllColumns().length} className="py-4">
+                      <div className="flex items-center justify-center text-gray-500">
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Loading more rows...
+                      </div>
+                    </td>
+                  </tr>
+                ) : null;
+              }
+
+              // Get the actual row data
+              const row = table.getRowModel().rows[virtualRow.index];
+              if (!row) return null;
+
+              // Check if it's the last row before the loader row
+              const isLastDataRow =
+                virtualRow.index === flattenedRows.length - 1;
+
+              return (
+                <tr
+                  key={row.id}
+                  ref={isLastDataRow ? lastRowRef : null}
+                  className="border-b border-gray-300 hover:bg-blue-50"
+                >
+                  {row.getVisibleCells().map((cell, index) => (
+                    <td
+                      key={cell.id}
+                      className={`px-4 py-3 text-sm text-gray-700 ${
+                        index < row.getVisibleCells().length - 1
+                          ? "border-r border-gray-300"
+                          : ""
+                      }`}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+
+            {paddingBottom > 0 && (
+              <tr>
+                <td
+                  style={{ height: `${paddingBottom}px` }}
+                  colSpan={table.getAllColumns().length}
+                />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer with row count */}
+      <RecordCountFooter
+        count={flattenedRows.length}
+        totalCount={totalCount}
+        isLoading={isFetchingNextPage}
+        position="relative"
+        className="border-t border-gray-200"
+      />
+
+      {/* Add Row Button - Fixed at the bottom */}
+      <div className="border-t border-gray-300 bg-white">
+        <button
+          onClick={() => onAddRow(tableId)}
+          disabled={isAddingRow}
+          className="flex w-full items-center justify-start px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+        >
+          {isAddingRow ? (
+            <>
+              <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
+              Adding...
+            </>
+          ) : (
+            <>
+              <Plus className="mr-2 h-4 w-4" />
+              Add a record
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

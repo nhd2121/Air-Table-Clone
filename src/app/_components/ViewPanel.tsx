@@ -16,6 +16,7 @@ import {
   AddColumnViewModal,
   type ColumnType,
 } from "../_components/tableComponents/addColumnModal";
+import Add100RowsButton from "./tableComponents/add100RowsButton";
 
 interface ViewPanelProps {
   tabId: string;
@@ -38,6 +39,7 @@ export function ViewPanel({
 }: ViewPanelProps) {
   const [showCreateViewModal, setShowCreateViewModal] = useState(false);
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
+  const [isAddingRows, setIsAddingRows] = useState(false);
 
   const utils = api.useUtils();
 
@@ -73,14 +75,15 @@ export function ViewPanel({
     { enabled: !!activeViewId },
   );
 
-  // Get the table data for the active view
-  const { data: tableData, isLoading: tableLoading } =
-    api.table.getTableForView.useQuery(
+  // We don't need to fetch all table data anymore, since we're using infinite queries
+  // Just fetch the table metadata we need
+  const { data: tableMetadata, isLoading: metadataLoading } =
+    api.table.getTableMetadata.useQuery(
       { viewId: activeViewId },
       { enabled: !!activeViewId },
     );
 
-  const isLoading = viewLoading || tableLoading;
+  const isLoading = viewLoading || metadataLoading;
 
   // Handle creating a new view
   const handleCreateView = (viewName: string) => {
@@ -94,32 +97,48 @@ export function ViewPanel({
   };
 
   const columns = useMemo(() => {
-    if (!tableData || !tableData.columns) return [];
-    return generateTableColumns(tableData.columns);
-  }, [tableData]);
+    if (!tableMetadata || !tableMetadata.columns) return [];
+    return generateTableColumns(tableMetadata.columns);
+  }, [tableMetadata]);
 
   // Add row mutation
   const addRow = api.table.addRow.useMutation({
-    onSuccess: async (newRow) => {
-      // Invalidate the table data query to refresh with the new row
-      await utils.table.getTableForView.invalidate({ viewId: activeViewId });
+    onSuccess: async () => {
+      // Invalidate the table data queries to refresh with the new row
+      await utils.table.getTableDataInfinite.invalidate({
+        viewId: activeViewId,
+      });
+    },
+  });
 
-      // Optionally fetch immediately for faster updates
-      void utils.table.getTableForView.fetch({ viewId: activeViewId });
+  // Add multiple rows mutation
+  const addMultipleRows = api.table.addMultipleRows.useMutation({
+    onSuccess: async () => {
+      // Invalidate the table data queries to refresh with the new rows
+      await utils.table.getTableDataInfinite.invalidate({
+        viewId: activeViewId,
+      });
+      setIsAddingRows(false);
+    },
+    onError: (error) => {
+      console.error("Error adding 100 rows:", error);
+      setIsAddingRows(false);
+      // Show error to user
+      alert("Failed to add rows. Please try again.");
     },
   });
 
   // Add column mutation
   const addColumn = api.table.addColumn.useMutation({
-    onSuccess: async (newColumn) => {
+    onSuccess: async () => {
       // Close the modal
       setShowAddColumnModal(false);
 
-      // Invalidate the table data query to refresh with the new column
-      await utils.table.getTableForView.invalidate({ viewId: activeViewId });
-
-      // Optionally fetch immediately for faster updates
-      void utils.table.getTableForView.fetch({ viewId: activeViewId });
+      // Invalidate the table data queries
+      await utils.table.getTableMetadata.invalidate({ viewId: activeViewId });
+      await utils.table.getTableDataInfinite.invalidate({
+        viewId: activeViewId,
+      });
     },
   });
 
@@ -128,12 +147,24 @@ export function ViewPanel({
     addRow.mutate({ tableId });
   };
 
+  // Handle adding 100 rows
+  const handleAdd100Rows = () => {
+    if (isAddingRows || !tableMetadata) return;
+
+    setIsAddingRows(true);
+
+    addMultipleRows.mutate({
+      tableId: tableMetadata.id,
+      count: 100,
+    });
+  };
+
   // Handle adding a new column
   const handleAddColumn = (name: string, type: ColumnType) => {
-    if (!tableData) return;
+    if (!tableMetadata) return;
 
     addColumn.mutate({
-      tableId: tableData.id,
+      tableId: tableMetadata.id,
       name,
       type,
     });
@@ -153,19 +184,24 @@ export function ViewPanel({
       <div className="flex flex-1 flex-col overflow-hidden">
         {isLoading ? (
           <TableLoadingState />
-        ) : tableData ? (
+        ) : tableMetadata ? (
           <div className="flex h-full flex-col">
-            {/* Header area - fixed, not scrollable */}
+            {/* Header area */}
             <div className="border-b border-gray-200 bg-white p-4">
-              <h2 className="text-xl font-semibold">{viewData?.name}</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">{viewData?.name}</h2>
+                <Add100RowsButton
+                  onClick={handleAdd100Rows}
+                  isLoading={isAddingRows}
+                />
+              </div>
             </div>
 
             {/* Table container - scrollable */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-hidden p-4">
               <DataTable
-                data={tableData.formattedRows || []}
+                viewId={activeViewId}
                 columns={columns}
-                tableId={tableData.id}
                 onAddRow={handleAddRow}
                 onAddColumn={() => setShowAddColumnModal(true)}
                 isAddingRow={addRow.isPending}

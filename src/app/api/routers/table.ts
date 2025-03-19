@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -12,6 +13,10 @@ import { faker } from "@faker-js/faker";
 
 // Schema validations
 const getTableSchema = z.object({
+  viewId: z.string(),
+});
+
+const getTableMetadataSchema = z.object({
   viewId: z.string(),
 });
 
@@ -37,6 +42,12 @@ const addMultipleRowsSchema = z.object({
   tableId: z.string(),
   count: z.number().min(1).max(100),
   startPosition: z.number().optional(),
+});
+
+const getTableDataInfiniteSchema = z.object({
+  viewId: z.string(),
+  limit: z.number().min(10).max(100).default(50),
+  cursor: z.number().nullish(), // Starting position for pagination
 });
 
 const generateFakeCells = (
@@ -497,47 +508,227 @@ export const tableRouter = createTRPCRouter({
         startPosition = highestRow ? highestRow.position + 1 : 0;
       }
 
-      // Use a transaction to create multiple rows and their cells
-      return await ctx.db.$transaction(async (prisma) => {
-        const createdRows = [];
-        const rowIds = [];
+      // Create all the rows first in a single operation
+      const rowIds = Array.from({ length: input.count }, () => nanoid());
+      const rowsData = rowIds.map((id, index) => ({
+        id,
+        position: startPosition + index,
+        tableId: input.tableId,
+      }));
 
-        // Create the new rows
-        for (let i = 0; i < input.count; i++) {
-          const rowId = nanoid();
-          rowIds.push(rowId);
+      // Create all rows in bulk
+      await ctx.db.row.createMany({
+        data: rowsData,
+      });
 
-          const row = await prisma.row.create({
-            data: {
-              id: rowId,
-              position: startPosition + i,
-              tableId: input.tableId,
+      // Generate all cells data
+      const allCellData = generateFakeCells(table.columns, rowIds);
+
+      // Process cells in batches to avoid transaction timeouts
+      const BATCH_SIZE = 500; // Process 500 cells at a time
+      for (let i = 0; i < allCellData.length; i += BATCH_SIZE) {
+        const batchCellData = allCellData.slice(i, i + BATCH_SIZE);
+
+        // Create cells in bulk for each batch
+        await ctx.db.cell.createMany({
+          data: batchCellData,
+        });
+      }
+
+      // Return the created rows info
+      return {
+        count: rowIds.length,
+        rows: rowsData.map((row) => ({
+          id: row.id,
+          position: row.position,
+        })),
+      };
+    }),
+
+  // endpoint that supports pagination
+  getTableDataInfinite: protectedProcedure
+    .input(getTableDataInfiniteSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // First check if the view belongs to the user
+      const view = await ctx.db.view.findFirst({
+        where: {
+          id: input.viewId,
+          tab: {
+            base: {
+              ownerId: userId,
             },
-          });
+          },
+        },
+        select: {
+          tableId: true,
+        },
+      });
 
-          createdRows.push(row);
-        }
+      if (!view) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "View not found or you don't have permission to access it",
+        });
+      }
 
-        // Create cells for all the new rows with fake data
-        if (table.columns.length > 0) {
-          const cellData = generateFakeCells(table.columns, rowIds);
+      // Get table information including columns
+      const table = await ctx.db.table.findUnique({
+        where: {
+          id: view.tableId,
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          isViewLinked: true,
+          columns: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              position: true,
+            },
+            orderBy: {
+              position: "asc",
+            },
+          },
+        },
+      });
 
-          await Promise.all(
-            cellData.map((cell) =>
-              prisma.cell.create({
-                data: cell,
-              }),
-            ),
-          );
-        }
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found",
+        });
+      }
+
+      // Query for rows with pagination
+      const cursor = input.cursor ?? 0;
+      const limit = input.limit;
+
+      // Get rows for the current page
+      const rows = await ctx.db.row.findMany({
+        where: {
+          tableId: view.tableId,
+        },
+        select: {
+          id: true,
+          position: true,
+          cells: {
+            select: {
+              columnId: true,
+              value: true,
+            },
+          },
+        },
+        orderBy: {
+          position: "asc",
+        },
+        skip: cursor,
+        take: limit + 1, // Take one extra to determine if there are more rows
+      });
+
+      // Count total rows for the table
+      const totalCount = await ctx.db.row.count({
+        where: {
+          tableId: view.tableId,
+        },
+      });
+
+      // Check if there are more rows
+      const hasMore = rows.length > limit;
+      const nextRows = hasMore ? rows.slice(0, -1) : rows;
+      const nextCursor = hasMore ? cursor + limit : null;
+
+      // Transform rows into the expected format
+      const formattedRows = nextRows.map((row) => {
+        const cells = {};
+        row.cells.forEach((cell) => {
+          cells[cell.columnId] = cell.value;
+        });
 
         return {
-          count: createdRows.length,
-          rows: createdRows.map((row) => ({
-            id: row.id,
-            position: row.position,
-          })),
+          id: row.id,
+          position: row.position,
+          cells,
         };
       });
+
+      return {
+        table,
+        rows: formattedRows,
+        nextCursor,
+        totalCount,
+      };
+    }),
+
+  getTableMetadata: protectedProcedure
+    .input(getTableMetadataSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // First check if the view belongs to the user
+      const view = await ctx.db.view.findFirst({
+        where: {
+          id: input.viewId,
+          tab: {
+            base: {
+              ownerId: userId,
+            },
+          },
+        },
+        select: {
+          tableId: true,
+        },
+      });
+
+      if (!view) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "View not found or you don't have permission to access it",
+        });
+      }
+
+      // Get only the table metadata without rows/cells
+      const table = await ctx.db.table.findUnique({
+        where: {
+          id: view.tableId,
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          isViewLinked: true,
+          createdAt: true,
+          updatedAt: true,
+          columns: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              position: true,
+            },
+            orderBy: {
+              position: "asc",
+            },
+          },
+          _count: {
+            select: {
+              rows: true,
+            },
+          },
+        },
+      });
+
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found",
+        });
+      }
+
+      return table;
     }),
 });
