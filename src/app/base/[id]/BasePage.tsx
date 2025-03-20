@@ -9,8 +9,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
-import { Loader2, Plus, Settings } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { ViewPanel } from "@/app/_components/ViewPanel";
+import { TopNavbar } from "@/app/_components/tableComponents/topNavBar";
+import { TabBar } from "@/app/_components/tableComponents/tabBar";
 
 interface BasePageProps {
   baseId: string;
@@ -21,7 +23,7 @@ export function BasePage({ baseId }: BasePageProps) {
   const router = useRouter();
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
-  const [showCreateTabModal, setShowCreateTabModal] = useState(false);
+  const [isCreatingTab, setIsCreatingTab] = useState(false);
 
   // Fetch base data with tabs and views
   const { data: base, isLoading } = api.base.getById.useQuery(
@@ -53,7 +55,7 @@ export function BasePage({ baseId }: BasePageProps) {
       // Select the default or first view in that tab when navigating to base page
       if (firstTab.views && firstTab.views.length > 0) {
         const defaultView = firstTab.views.find((view) => view.isDefault);
-        setActiveViewId(defaultView?.id || firstTab.views[0].id);
+        setActiveViewId(defaultView?.id ?? firstTab.views[0].id);
       }
     }
   }, [base, activeTabId]);
@@ -63,6 +65,9 @@ export function BasePage({ baseId }: BasePageProps) {
   // Create a new tab
   const createTab = api.tab.create.useMutation({
     onSuccess: (newTab) => {
+      // Set creating state to false
+      setIsCreatingTab(false);
+
       // Invalidate queries to refresh the data
       void utils.base.getById.invalidate({ id: baseId });
 
@@ -73,8 +78,10 @@ export function BasePage({ baseId }: BasePageProps) {
       if (newTab.views && newTab.views.length > 0) {
         setActiveViewId(newTab.views[0].id);
       }
-
-      setShowCreateTabModal(false);
+    },
+    onError: (error) => {
+      console.error("Error creating tab:", error);
+      setIsCreatingTab(false);
     },
   });
 
@@ -86,7 +93,7 @@ export function BasePage({ baseId }: BasePageProps) {
     const tab = base?.tabs.find((t) => t.id === tabId);
     if (tab?.views && tab.views.length > 0) {
       const defaultView = tab.views.find((view) => view.isDefault);
-      setActiveViewId(defaultView?.id || tab.views[0].id);
+      setActiveViewId(defaultView?.id ?? tab.views[0].id);
     } else {
       setActiveViewId(null);
     }
@@ -94,7 +101,9 @@ export function BasePage({ baseId }: BasePageProps) {
 
   // Handle creating a new tab
   const handleCreateTab = () => {
-    if (!baseId) return;
+    if (!baseId || isCreatingTab) return;
+
+    setIsCreatingTab(true);
 
     // Find the highest tab position
     const highestPosition =
@@ -144,45 +153,21 @@ export function BasePage({ baseId }: BasePageProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <div className="flex items-center justify-between border-b bg-white px-4 py-2">
-        <div className="flex items-center">
-          <h1 className="mr-4 text-xl font-bold">{base.name}</h1>
-          <button className="rounded-full p-1 text-gray-500 hover:bg-gray-100">
-            <Settings size={18} />
-          </button>
-        </div>
-      </div>
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* Top Navbar Component */}
+      <TopNavbar baseName={base.name || "Untitled Base"} baseId={baseId} />
 
-      {/* Tabs Navigation */}
-      <div className="border-b bg-white">
-        <div className="w-full border-b">
-          <div className="flex h-10 w-full items-center justify-start px-4">
-            {base.tabs?.map((tab) => (
-              <div
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                className={`cursor-pointer px-4 py-2 ${
-                  activeTabId === tab.id
-                    ? "border-b-2 border-blue-600 font-medium text-blue-600"
-                    : "text-gray-700 hover:text-gray-900"
-                }`}
-              >
-                {tab.name}
-              </div>
-            ))}
-            <button
-              className="ml-2 rounded-md p-1 text-gray-500 hover:bg-gray-100"
-              onClick={handleCreateTab}
-            >
-              <Plus size={18} />
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Tab Bar Component */}
+      <TabBar
+        tabs={base.tabs || []}
+        activeTabId={activeTabId}
+        onTabSelect={handleTabChange}
+        onTabCreate={handleCreateTab}
+        isCreatingTab={isCreatingTab}
+      />
 
       {/* Main Content Area with View Panel */}
-      <div className="flex h-full">
+      <div className="flex flex-1 overflow-hidden">
         {activeTab && activeViewId && (
           <ViewPanel
             tabId={activeTabId as string}

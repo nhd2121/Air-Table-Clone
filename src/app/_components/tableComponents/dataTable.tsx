@@ -61,7 +61,6 @@ export function DataTable<TData>({
     hasNextPage,
     isFetchingNextPage,
     isLoading,
-    status,
   } = api.table.getTableDataInfinite.useInfiniteQuery(
     {
       viewId,
@@ -308,13 +307,6 @@ export function DataTable<TData>({
     );
   }
 
-  // Prepare status text for footer
-  const loadingMoreText = isFetchingNextPage ? " (Loading more...)" : "";
-  const countText =
-    totalCount !== undefined
-      ? `${flattenedRows.length} of ${totalCount}${loadingMoreText}`
-      : `${flattenedRows.length}${loadingMoreText}`;
-
   return (
     <div
       className={`flex h-full flex-col rounded-md border border-gray-300 shadow-sm ${className}`}
@@ -367,7 +359,7 @@ export function DataTable<TData>({
               </tr>
             )}
 
-            {virtualRows.map((virtualRow, index) => {
+            {virtualRows.map((virtualRow) => {
               // Handle the loading more row
               const isLoaderRow = virtualRow.index >= flattenedRows.length;
 
