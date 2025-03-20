@@ -50,6 +50,11 @@ const getTableDataInfiniteSchema = z.object({
   cursor: z.number().nullish(), // Starting position for pagination
 });
 
+const searchTableDataSchema = z.object({
+  tableId: z.string(),
+  searchTerm: z.string().min(1),
+});
+
 const generateFakeCells = (
   columns: { id: string; type: ColumnType; name: string }[],
   rowIds: string[],
@@ -730,5 +735,101 @@ export const tableRouter = createTRPCRouter({
       }
 
       return table;
+    }),
+
+  searchTableData: protectedProcedure
+    .input(searchTableDataSchema)
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // Check if the table belongs to the user
+      const table = await ctx.db.table.findFirst({
+        where: {
+          id: input.tableId,
+          views: {
+            some: {
+              tab: {
+                base: {
+                  ownerId: userId,
+                },
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          columns: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              position: true,
+            },
+            orderBy: {
+              position: "asc",
+            },
+          },
+        },
+      });
+
+      if (!table) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found or you don't have permission to access it",
+        });
+      }
+
+      // Get all rows for the table
+      const allRows = await ctx.db.row.findMany({
+        where: {
+          tableId: input.tableId,
+        },
+        select: {
+          id: true,
+          position: true,
+          cells: {
+            select: {
+              columnId: true,
+              value: true,
+            },
+          },
+        },
+        orderBy: {
+          position: "asc",
+        },
+      });
+
+      // Search term as lowercase for case-insensitive comparison
+      const searchTermLower = input.searchTerm.toLowerCase();
+
+      // Filter rows that have cells containing the search term
+      const matchingRows = allRows.filter((row) => {
+        return row.cells.some((cell) => {
+          if (cell.value === null) return false;
+          return cell.value.toLowerCase().includes(searchTermLower);
+        });
+      });
+
+      // Transform rows to the expected format
+      const formattedRows = matchingRows.map((row) => {
+        const cells = {};
+        row.cells.forEach((cell) => {
+          cells[cell.columnId] = cell.value;
+        });
+
+        return {
+          id: row.id,
+          position: row.position,
+          cells,
+        };
+      });
+
+      return {
+        table,
+        rows: formattedRows,
+        columns: table.columns,
+      };
     }),
 });

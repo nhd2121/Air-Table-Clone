@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
 import { Loader2 } from "lucide-react";
-import { ViewPanel } from "@/app/_components/ViewPanel";
+import { ViewPanel } from "@/app/_components/viewPanel";
 import { TopNavbar } from "@/app/_components/tableComponents/topNavBar";
 import { TabBar } from "@/app/_components/tableComponents/tabBar";
 
@@ -167,7 +167,7 @@ export function BasePage({ baseId }: BasePageProps) {
       />
 
       {/* Main Content Area with View Panel */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {activeTab && activeViewId && (
           <ViewPanel
             tabId={activeTabId as string}

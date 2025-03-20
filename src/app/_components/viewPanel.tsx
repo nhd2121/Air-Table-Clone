@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/trpc/react";
-import { CreateViewModal } from "@/app/_components/tableComponents/CreateViewModal";
+import { CreateViewModal } from "@/app/_components/tableComponents/createViewModal";
 import { generateTableColumns } from "./tableComponents/tableUltis";
 import { ViewsSidebar } from "./tableComponents/viewSideBar";
 import { TableLoadingState } from "./tableComponents/tableLoadingState";
@@ -15,7 +15,7 @@ import { DataTable } from "./tableComponents/dataTable";
 import {
   AddColumnViewModal,
   type ColumnType,
-} from "../_components/tableComponents/addColumnModal";
+} from "./tableComponents/addColumnModal";
 import Add100RowsButton from "./tableComponents/add100RowsButton";
 import { Toolbar } from "./tableComponents/toolBar";
 import { SearchResults } from "./tableComponents/searchResults";
@@ -194,7 +194,7 @@ export function ViewPanel({
   };
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col overflow-hidden">
       <Toolbar
         viewId={activeViewId}
         isViewsSidebarOpen={viewsSidebarOpen}
@@ -205,7 +205,7 @@ export function ViewPanel({
         setShowSearchMessage={setShowSearchMessage}
       />
 
-      <div className="flex">
+      <div className="flex h-full overflow-hidden">
         {/* Sidebar with views - fixed height, non-scrollable */}
         <div
           className={`h-full ${viewsSidebarOpen ? "w-80" : "w-0 overflow-hidden"} transition-all duration-300 ease-in-out`}

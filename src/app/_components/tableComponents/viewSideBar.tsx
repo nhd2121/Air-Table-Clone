@@ -1,5 +1,5 @@
-import ViewSelectButton from "./ViewSelectButton";
-import CreateViewButton from "./CreateViewButton";
+import ViewSelectButton from "./viewSelectButton";
+import CreateViewButton from "./createViewButton";
 
 interface ViewsSidebarProps {
   views: Array<{

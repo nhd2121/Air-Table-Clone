@@ -19,7 +19,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Loader2, Plus } from "lucide-react";
 import { AddColumnButton } from "./addColumnButton";
 import { api } from "@/trpc/react";
-import RecordCountFooter from "./RecordCountFooter";
+import RecordCountFooter from "./recordCountFooter";
 
 interface DataTableProps<TData> {
   viewId: string;
@@ -316,6 +316,7 @@ export function DataTable<TData>({
         className="flex-1 overflow-auto"
         style={{ position: "relative" }}
       >
+        {/* Table content */}
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
