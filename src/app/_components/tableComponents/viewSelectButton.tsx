@@ -16,7 +16,7 @@ const ViewSelectButton: React.FC<ViewSelectButtonProps> = ({
   name,
   isActive,
   onSelect,
-  className = "flex w-full items-center rounded-md px-3 py-2 text-left text-sm",
+  className = "flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] font-normal leading-[1.5]",
   activeClassName = "bg-blue-100 text-black",
   inactiveClassName = "text-black hover:bg-gray-100",
 }) => {

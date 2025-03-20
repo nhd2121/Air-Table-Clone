@@ -14,14 +14,14 @@ const ToggleViewSidebarButton: React.FC<ToggleViewSidebarButtonProps> = ({
   isOpen,
   onClick,
   label = "Views",
-  className = "flex h-8 items-center bg-white px-3 text-sm font-medium text-gray-600 hover:bg-gray-50",
+  className = "flex gap-1 h-6 ml-2 items-center bg-white px-2 text-[13px] font-normal leading-[1.5] text-black hover:bg-gray-100",
 }) => {
   return (
     <button
       onClick={onClick}
       className={`${className} ${isOpen ? "bg-gray-100" : ""}`}
     >
-      <AlignJustify size={16} className="mr-1 text-gray-500" />
+      <AlignJustify size={16} className="text-black" />
       {label}
     </button>
   );

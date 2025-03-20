@@ -196,6 +196,7 @@ export function ViewPanel({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <Toolbar
+        viewName={viewData?.name}
         viewId={activeViewId}
         isViewsSidebarOpen={viewsSidebarOpen}
         toggleViewsSidebar={toggleViewsSidebar}

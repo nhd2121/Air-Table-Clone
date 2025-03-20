@@ -20,7 +20,7 @@ const CreateViewButton: React.FC<CreateViewButtonProps> = ({
         <TableCellsSplit size={16} className="mr-2 text-blue-600" />
         {label}
       </div>
-      <Plus size={iconSize} className="mr-1" />
+      <Plus size={iconSize} />
     </button>
   );
 };
