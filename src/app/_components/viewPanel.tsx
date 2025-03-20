@@ -206,7 +206,7 @@ export function ViewPanel({
       />
 
       <div className="flex h-full overflow-hidden">
-        {/* Sidebar with views - fixed height, non-scrollable */}
+        {/* Sidebar with views */}
         <div
           className={`h-full ${viewsSidebarOpen ? "w-80" : "w-0 overflow-hidden"} transition-all duration-300 ease-in-out`}
         >
@@ -218,7 +218,7 @@ export function ViewPanel({
           />
         </div>
 
-        {/* Main content area - Table display with scrollable content area */}
+        {/* Table content area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {isLoading ? (
             <TableLoadingState />
@@ -251,6 +251,9 @@ export function ViewPanel({
                   onAddRow={handleAddRow}
                   onAddColumn={() => setShowAddColumnModal(true)}
                   isAddingRow={addRow.isPending}
+                  searchResults={shouldUseSearch ? searchQuery.data : undefined}
+                  isSearching={isSearching}
+                  searchTerm={searchTerm}
                 />
               </div>
             </div>

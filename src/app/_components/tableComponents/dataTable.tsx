@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -16,10 +17,11 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { AddColumnButton } from "./addColumnButton";
 import { api } from "@/trpc/react";
 import RecordCountFooter from "./recordCountFooter";
+import AddRowButton from "./addRowButton";
 
 interface DataTableProps<TData> {
   viewId: string;
@@ -28,6 +30,12 @@ interface DataTableProps<TData> {
   onAddRow: (tableId: string) => void;
   onAddColumn: () => void;
   isAddingRow?: boolean;
+  searchResults?: {
+    rows?: any[];
+    table?: any;
+  };
+  isSearching?: boolean;
+  searchTerm?: string;
 }
 
 export function DataTable<TData>({
@@ -37,6 +45,8 @@ export function DataTable<TData>({
   onAddRow,
   onAddColumn,
   isAddingRow = false,
+  searchResults,
+  searchTerm = "",
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -70,20 +80,40 @@ export function DataTable<TData>({
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       staleTime: 15000, // 15 seconds
       refetchOnWindowFocus: false,
+      enabled: !searchTerm,
     },
   );
 
+  // Determine if we're in search mode
+  const isSearchActive = !!searchTerm && searchTerm.trim().length > 0;
+
   // Extract all rows from all pages
   const flattenedRows = useMemo(() => {
+    // If searching, use search results
+    if (isSearchActive && searchResults?.rows) {
+      return searchResults.rows;
+    }
+
+    // Otherwise use infinite query data
     if (!infiniteData?.pages) return [];
     return infiniteData.pages.flatMap((page) => page.rows);
-  }, [infiniteData]);
+  }, [infiniteData, searchResults, isSearchActive]);
 
-  // Get tableId from the first page
-  const tableId = infiniteData?.pages[0]?.table?.id ?? "";
+  // Get tableId from the appropriate source
+  const tableId = useMemo(() => {
+    if (isSearchActive && searchResults?.table?.id) {
+      return searchResults.table.id;
+    }
+    return infiniteData?.pages[0]?.table?.id ?? "";
+  }, [infiniteData, searchResults, isSearchActive]);
 
-  // Get total count from the first page (if available)
-  const totalCount = infiniteData?.pages[0]?.totalCount;
+  // Get total count appropriately
+  const totalCount = useMemo(() => {
+    if (isSearchActive && searchResults?.rows) {
+      return searchResults.rows.length;
+    }
+    return infiniteData?.pages[0]?.totalCount;
+  }, [infiniteData, searchResults, isSearchActive]);
 
   // Set up virtualizer for rows
   const rowVirtualizer = useVirtualizer({
@@ -98,16 +128,22 @@ export function DataTable<TData>({
   // Observer for the last row to fetch more data when it comes into view
   const lastRowRef = useRef<HTMLTableRowElement>(null);
 
+  // Observer to detect when we're near the bottom of the list
   useEffect(() => {
-    // Observer to detect when we're near the bottom of the list
     const observer = new IntersectionObserver(
       (entries) => {
+        // Only fetch more when not in search mode
         const entry = entries[0];
-        if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        if (
+          !isSearchActive &&
+          entry?.isIntersecting &&
+          hasNextPage &&
+          !isFetchingNextPage
+        ) {
           void fetchNextPage();
         }
       },
-      { threshold: 0.1 }, // Trigger when at least 10% of the element is visible
+      { threshold: 0.1 },
     );
 
     const currentLastRow = lastRowRef.current;
@@ -120,18 +156,23 @@ export function DataTable<TData>({
         observer.unobserve(currentLastRow);
       }
     };
-  }, [lastRowRef, fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [
+    lastRowRef,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isSearchActive,
+  ]);
 
   // Handle scroll events to detect when user has scrolled to bottom
   useEffect(() => {
     const handleScroll = () => {
-      if (!tableContainerRef.current) return;
+      if (!tableContainerRef.current || isSearchActive) return;
 
       const { scrollTop, scrollHeight, clientHeight } =
         tableContainerRef.current;
       const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
 
-      // If we're close to the bottom (within 300px) and not already loading
       if (
         distanceFromBottom < 300 &&
         hasNextPage &&
@@ -142,7 +183,6 @@ export function DataTable<TData>({
         void fetchNextPage();
       }
 
-      // Reset when we scroll back up
       if (distanceFromBottom > 500 && hasScrolledToBottom) {
         setHasScrolledToBottom(false);
       }
@@ -158,7 +198,13 @@ export function DataTable<TData>({
         scrollElement.removeEventListener("scroll", handleScroll);
       }
     };
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, hasScrolledToBottom]);
+  }, [
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    hasScrolledToBottom,
+    isSearchActive,
+  ]);
 
   // Cell update mutation
   const updateCell = api.table.updateCell.useMutation({
@@ -285,7 +331,7 @@ export function DataTable<TData>({
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    // Important to specify that rows have stable IDs for virtualization
+    // Specify that rows have stable IDs for virtualization
     getRowId: (row: any) => row.id,
   });
 
@@ -437,23 +483,10 @@ export function DataTable<TData>({
 
       {/* Add Row Button - Fixed at the bottom */}
       <div className="border-t border-gray-300 bg-white">
-        <button
+        <AddRowButton
+          isLoading={isAddingRow}
           onClick={() => onAddRow(tableId)}
-          disabled={isAddingRow}
-          className="flex w-full items-center justify-start px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-        >
-          {isAddingRow ? (
-            <>
-              <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
-              Adding...
-            </>
-          ) : (
-            <>
-              <Plus className="mr-2 h-4 w-4" />
-              Add a record
-            </>
-          )}
-        </button>
+        />
       </div>
     </div>
   );

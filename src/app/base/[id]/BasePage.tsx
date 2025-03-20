@@ -37,7 +37,7 @@ export function BasePage({ baseId }: BasePageProps) {
 
           // Set active view to default view or first view
           const firstTab = data.tabs[0];
-          if (firstTab.views && firstTab.views.length > 0) {
+          if (firstTab?.views && firstTab.views.length > 0) {
             const defaultView = firstTab.views.find((view) => view.isDefault);
             setActiveViewId(defaultView?.id || firstTab.views[0].id);
           }
@@ -50,10 +50,12 @@ export function BasePage({ baseId }: BasePageProps) {
     if (base?.tabs && base.tabs.length > 0 && !activeTabId) {
       // Select the first tab
       const firstTab = base.tabs[0];
-      setActiveTabId(firstTab.id);
+      if (firstTab) {
+        setActiveTabId(firstTab.id);
+      }
 
       // Select the default or first view in that tab when navigating to base page
-      if (firstTab.views && firstTab.views.length > 0) {
+      if (firstTab?.views && firstTab.views.length > 0) {
         const defaultView = firstTab.views.find((view) => view.isDefault);
         setActiveViewId(defaultView?.id ?? firstTab.views[0].id);
       }
