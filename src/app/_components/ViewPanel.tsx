@@ -17,6 +17,8 @@ import {
   type ColumnType,
 } from "../_components/tableComponents/addColumnModal";
 import Add100RowsButton from "./tableComponents/add100RowsButton";
+import { Toolbar } from "./tableComponents/toolBar";
+import { SearchResults } from "./tableComponents/searchResults";
 
 interface ViewPanelProps {
   tabId: string;
@@ -40,6 +42,12 @@ export function ViewPanel({
   const [showCreateViewModal, setShowCreateViewModal] = useState(false);
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
   const [isAddingRows, setIsAddingRows] = useState(false);
+
+  // Toolbar state
+  const [viewsSidebarOpen, setViewsSidebarOpen] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchMessage, setShowSearchMessage] = useState(false);
 
   const utils = api.useUtils();
 
@@ -75,8 +83,6 @@ export function ViewPanel({
     { enabled: !!activeViewId },
   );
 
-  // We don't need to fetch all table data anymore, since we're using infinite queries
-  // Just fetch the table metadata we need
   const { data: tableMetadata, isLoading: metadataLoading } =
     api.table.getTableMetadata.useQuery(
       { viewId: activeViewId },
@@ -84,6 +90,18 @@ export function ViewPanel({
     );
 
   const isLoading = viewLoading || metadataLoading;
+
+  // Determine which query to use based on search term
+  const shouldUseSearch = searchTerm.trim().length > 0;
+
+  // Search query
+  const searchQuery = api.table.searchTableData.useQuery(
+    { tableId: tableMetadata?.id ?? "", searchTerm: searchTerm.trim() },
+    {
+      refetchOnWindowFocus: false,
+      enabled: shouldUseSearch && !!tableMetadata?.id,
+    },
+  );
 
   // Handle creating a new view
   const handleCreateView = (viewName: string) => {
@@ -94,6 +112,11 @@ export function ViewPanel({
       name: viewName,
       position: views.length,
     });
+  };
+
+  // Toggle views sidebar
+  const toggleViewsSidebar = () => {
+    setViewsSidebarOpen(!viewsSidebarOpen);
   };
 
   const columns = useMemo(() => {
@@ -171,65 +194,89 @@ export function ViewPanel({
   };
 
   return (
-    <div className="flex h-full w-full">
-      {/* Sidebar with views - fixed height, non-scrollable */}
-      <ViewsSidebar
-        views={displayViews}
-        activeViewId={activeViewId}
-        onViewChange={onViewChange}
-        onCreateView={() => setShowCreateViewModal(true)}
+    <div className="flex h-full w-full flex-col">
+      <Toolbar
+        viewId={activeViewId}
+        isViewsSidebarOpen={viewsSidebarOpen}
+        toggleViewsSidebar={toggleViewsSidebar}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        setIsSearching={setIsSearching}
+        setShowSearchMessage={setShowSearchMessage}
       />
 
-      {/* Main content area - Table display with scrollable content area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {isLoading ? (
-          <TableLoadingState />
-        ) : tableMetadata ? (
-          <div className="flex h-full flex-col">
-            {/* Header area */}
-            <div className="border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">{viewData?.name}</h2>
-                <Add100RowsButton
-                  onClick={handleAdd100Rows}
-                  isLoading={isAddingRows}
+      <div className="flex">
+        {/* Sidebar with views - fixed height, non-scrollable */}
+        <div
+          className={`h-full ${viewsSidebarOpen ? "w-80" : "w-0 overflow-hidden"} transition-all duration-300 ease-in-out`}
+        >
+          <ViewsSidebar
+            views={displayViews}
+            activeViewId={activeViewId}
+            onViewChange={onViewChange}
+            onCreateView={() => setShowCreateViewModal(true)}
+          />
+        </div>
+
+        {/* Main content area - Table display with scrollable content area */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {isLoading ? (
+            <TableLoadingState />
+          ) : tableMetadata ? (
+            <div className="flex h-full flex-col">
+              {/* Header area */}
+              <div className="border-b border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">{viewData?.name}</h2>
+                  <Add100RowsButton
+                    onClick={handleAdd100Rows}
+                    isLoading={isAddingRows}
+                  />
+                </div>
+              </div>
+
+              {/* SearchResults component */}
+              <SearchResults
+                searchTerm={searchTerm}
+                isSearching={isSearching}
+                showSearchMessage={showSearchMessage}
+                resultCount={searchQuery.data?.rows?.length}
+              />
+
+              {/* Table container - scrollable */}
+              <div className="flex-1 overflow-hidden p-4">
+                <DataTable
+                  viewId={activeViewId}
+                  columns={columns}
+                  onAddRow={handleAddRow}
+                  onAddColumn={() => setShowAddColumnModal(true)}
+                  isAddingRow={addRow.isPending}
                 />
               </div>
             </div>
-
-            {/* Table container - scrollable */}
-            <div className="flex-1 overflow-hidden p-4">
-              <DataTable
-                viewId={activeViewId}
-                columns={columns}
-                onAddRow={handleAddRow}
-                onAddColumn={() => setShowAddColumnModal(true)}
-                isAddingRow={addRow.isPending}
-              />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-gray-500">Select a view to see data</p>
             </div>
-          </div>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-gray-500">Select a view to see data</p>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Add Column Modal */}
+        <AddColumnViewModal
+          isOpen={showAddColumnModal}
+          onClose={() => setShowAddColumnModal(false)}
+          onAddColumn={handleAddColumn}
+          isPending={addColumn.isPending}
+        />
+
+        {/* Create View Modal */}
+        <CreateViewModal
+          isOpen={showCreateViewModal}
+          onClose={() => setShowCreateViewModal(false)}
+          onCreateView={handleCreateView}
+          isPending={createView.isPending}
+        />
       </div>
-
-      {/* Add Column Modal */}
-      <AddColumnViewModal
-        isOpen={showAddColumnModal}
-        onClose={() => setShowAddColumnModal(false)}
-        onAddColumn={handleAddColumn}
-        isPending={addColumn.isPending}
-      />
-
-      {/* Create View Modal */}
-      <CreateViewModal
-        isOpen={showCreateViewModal}
-        onClose={() => setShowCreateViewModal(false)}
-        onCreateView={handleCreateView}
-        isPending={createView.isPending}
-      />
     </div>
   );
 }

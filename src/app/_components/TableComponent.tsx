@@ -19,7 +19,7 @@ import { api } from "@/trpc/react";
 import { AddColumnModal, type ColumnType } from "./AddColumnModal";
 import { CreateViewModal } from "./tableComponents/CreateViewModal";
 import { ColumnTypeDropdown } from "./ColumnTypeDropdown";
-import { SearchBarTable } from "./SearchBarTable";
+import { SearchBarTable } from "./tableComponents/searchBarTable";
 import LoadingTableData from "./LoadingTableData";
 import type { View } from "@/type/db";
 import type { TableRow } from "@/type/db";
@@ -30,7 +30,7 @@ import AddRecordButton from "./AddRecordButton";
 import type { ColumnTypesState, TableComponentProps } from "./types/type";
 import CreateColumnButton from "./CreateColumnButton";
 import ViewSelectButton from "./tableComponents/ViewSelectButton";
-import ToggleViewSidebarButton from "./ToolbarButton";
+import ToggleViewSidebarButton from "./tableComponents/toggleViewSidebarButton";
 import CreateViewButton from "./tableComponents/CreateViewButton";
 
 const TableComponent: React.FC<TableComponentProps> = ({

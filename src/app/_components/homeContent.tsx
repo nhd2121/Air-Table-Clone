@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import { Sidebar } from "./mainPageSideBar";
 import type { Session } from "next-auth";
 import { api } from "@/trpc/react";
-import NavBar from "./navBar";
+import NavBar from "./mainPageNavBar";
 import Link from "next/link";
 import { ChevronDown, LayoutGrid, Menu, X } from "lucide-react";
 
