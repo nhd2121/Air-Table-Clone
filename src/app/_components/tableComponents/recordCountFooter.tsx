@@ -23,7 +23,6 @@ const RecordCountFooter: React.FC<RecordCountFooterProps> = ({
   const isPlural = count !== 1;
   const isSearching = searchTerm && searchTerm.length > 0;
 
-  // Format the count display
   const displayCount = () => {
     if (totalCount !== undefined) {
       return (
@@ -57,7 +56,7 @@ const RecordCountFooter: React.FC<RecordCountFooterProps> = ({
 
   return (
     <div
-      className={`${position} bottom-0 z-10 mt-auto bg-white px-4 py-2 text-sm text-gray-500 shadow-sm ${className}`}
+      className={`${position} bottom-0 z-10 w-full bg-white px-4 py-2 text-sm text-gray-500 shadow-sm ${className}`}
     >
       {displayCount()}
     </div>

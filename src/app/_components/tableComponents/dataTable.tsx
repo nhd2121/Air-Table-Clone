@@ -357,14 +357,10 @@ export function DataTable<TData>({
     <div
       className={`flex h-full flex-col rounded-md border border-gray-300 shadow-sm ${className}`}
     >
-      <div
-        ref={tableContainerRef}
-        className="flex-1 overflow-auto"
-        style={{ position: "relative" }}
-      >
-        {/* Table content */}
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 w-full bg-gray-50">
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-10 bg-gray-50">
+          <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr
                 key={headerGroup.id}
@@ -396,6 +392,12 @@ export function DataTable<TData>({
               </tr>
             ))}
           </thead>
+        </table>
+      </div>
+
+      {/* Scrollable Table Body */}
+      <div ref={tableContainerRef} className="flex-1 overflow-auto">
+        <table className="w-full border-collapse">
           <tbody>
             {paddingTop > 0 && (
               <tr>
@@ -468,24 +470,28 @@ export function DataTable<TData>({
                 />
               </tr>
             )}
+
+            {/* Add Row Button as the last row of the table */}
+            <tr className="border-t border-gray-300">
+              <td colSpan={table.getAllColumns().length} className="p-0">
+                <AddRowButton
+                  isLoading={isAddingRow}
+                  onClick={() => onAddRow(tableId)}
+                />
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
 
-      {/* Footer with row count */}
-      <RecordCountFooter
-        count={flattenedRows.length}
-        totalCount={totalCount}
-        isLoading={isFetchingNextPage}
-        position="relative"
-        className="border-t border-gray-200"
-      />
-
-      {/* Add Row Button - Fixed at the bottom */}
-      <div className="border-t border-gray-300 bg-white">
-        <AddRowButton
-          isLoading={isAddingRow}
-          onClick={() => onAddRow(tableId)}
+      {/* Footer with row count (sticky at bottom) */}
+      <div className="sticky bottom-0 z-10 w-full bg-white">
+        <RecordCountFooter
+          count={flattenedRows.length}
+          totalCount={totalCount}
+          isLoading={isFetchingNextPage}
+          position="relative"
+          className="border-t border-gray-200"
         />
       </div>
     </div>

@@ -196,7 +196,7 @@ export function ViewPanel({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <Toolbar
-        viewName={viewData?.name}
+        viewName={viewData?.name ?? ""}
         viewId={activeViewId}
         isViewsSidebarOpen={viewsSidebarOpen}
         toggleViewsSidebar={toggleViewsSidebar}
@@ -226,9 +226,9 @@ export function ViewPanel({
           ) : tableMetadata ? (
             <div className="flex h-full flex-col">
               {/* Header area */}
-              <div className="border-b border-gray-200 bg-white p-4">
+              <div className="bg-white px-4 py-1">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">{viewData?.name}</h2>
+                  <h2 className="text-lg font-semibold">{viewData?.name}</h2>
                   <Add100RowsButton
                     onClick={handleAdd100Rows}
                     isLoading={isAddingRows}
@@ -245,7 +245,7 @@ export function ViewPanel({
               />
 
               {/* Table container - scrollable */}
-              <div className="flex-1 overflow-hidden p-4">
+              <div className="flex-1 overflow-hidden">
                 <DataTable
                   viewId={activeViewId}
                   columns={columns}
