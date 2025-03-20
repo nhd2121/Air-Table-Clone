@@ -18,9 +18,21 @@ export function generateTableColumns(tableColumns: Column[]) {
     columnHelper.accessor((row) => row.cells[column.id], {
       id: column.id,
       header: () => (
-        <div className="flex items-center">
-          <span>{column.name}</span>
-          <ArrowUpDown className="ml-2 h-4 w-4" />
+        <div
+          className="flex items-center"
+          style={{ width: "179px", maxWidth: "179px", overflow: "hidden" }}
+        >
+          <span
+            className="truncate"
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {column.name}
+          </span>
+          <ArrowUpDown className="ml-2 h-4 w-4 flex-shrink-0" />
         </div>
       ),
       // Let the DataTable component handle the cell rendering for editing
@@ -29,6 +41,7 @@ export function generateTableColumns(tableColumns: Column[]) {
       meta: {
         type: column.type,
       },
+      size: 179, // Fixed width for columns
     }),
   );
 }

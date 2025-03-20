@@ -10,7 +10,7 @@ interface AddRowButtonProps {
 const AddRowButton: React.FC<AddRowButtonProps> = ({
   isLoading = false,
   onClick,
-  className = "flex w-full items-center justify-start px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50",
+  className = "flex w-full items-center justify-start px-4 py-2 border-b text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50",
 }) => {
   return (
     <button onClick={onClick} disabled={isLoading} className={className}>

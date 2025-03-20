@@ -251,7 +251,7 @@ export function DataTable<TData>({
                 }
               }}
               onBlur={() => handleCellUpdate(rowId, columnId, columnType)}
-              className="w-full rounded border-none bg-blue-50 p-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded border-none bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               autoFocus
             />
           );
@@ -259,8 +259,17 @@ export function DataTable<TData>({
 
         return (
           <div
-            className="min-h-[24px] w-full cursor-pointer rounded px-1 py-1 hover:bg-blue-100"
+            className="h-[31px] cursor-pointer rounded px-2 py-1.5 text-[13px] font-normal leading-[1.5] hover:bg-blue-100"
             onClick={() => handleCellClick(rowId, columnId, value)}
+            style={{
+              width: "179px",
+              maxWidth: "179px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              display: "block",
+            }}
+            title={value || ""}
           >
             {value || ""}
           </div>
@@ -369,7 +378,7 @@ export function DataTable<TData>({
                 {headerGroup.headers.map((header, index) => (
                   <th
                     key={header.id}
-                    className={`px-4 py-3 text-left text-sm font-medium text-gray-600 ${
+                    className={`h-[31px] px-2 py-1.5 text-left text-sm font-medium text-gray-600 ${
                       index < headerGroup.headers.length - 1
                         ? "border-r border-gray-300"
                         : ""
@@ -378,7 +387,11 @@ export function DataTable<TData>({
                     style={
                       header.id === "add-column"
                         ? { width: "50px", minWidth: "50px" }
-                        : {}
+                        : {
+                            width: "179px",
+                            minWidth: "179px",
+                            maxWidth: "179px",
+                          }
                     }
                   >
                     {header.isPlaceholder
@@ -446,7 +459,7 @@ export function DataTable<TData>({
                   {row.getVisibleCells().map((cell, index) => (
                     <td
                       key={cell.id}
-                      className={`px-4 py-3 text-sm text-gray-700 ${
+                      className={`text-sm text-gray-700 ${
                         index < row.getVisibleCells().length - 1
                           ? "border-r border-gray-300"
                           : ""
